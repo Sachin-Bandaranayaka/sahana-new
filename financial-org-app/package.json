@@ -1,0 +1,37 @@
+{
+  "name": "financial-org-app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@mui/icons-material": "^7.0.1",
+    "@mui/material": "^7.0.1",
+    "better-sqlite3": "^11.9.1",
+    "chart.js": "^4.4.8",
+    "electron": "^35.1.4",
+    "electron-builder": "^26.0.12",
+    "electron-is-dev": "^3.0.1",
+    "knex": "^3.1.0",
+    "react": "^19.1.0",
+    "react-chartjs-2": "^5.3.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.5.0",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "create-react-app": "^5.1.0",
+    "cross-env": "^7.0.3",
+    "electron-rebuild": "^3.2.9",
+    "wait-on": "^8.0.3"
+  }
+}
