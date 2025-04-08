@@ -65,14 +65,25 @@ This was a simplification of the traditional dividend model where all active mem
 
 #### New Proportional Dividend Calculation
 
-The system now implements a proportional dividend distribution model based on each member's contribution to the organization's total assets:
+The system now implements a fully automated proportional dividend distribution model:
 
-- **Dividend Pool** = Quarterly Profit × Dividend Rate (e.g., 8.5%) 
+- **Dividend Rate** = Automatically calculated based on organization's total assets (higher assets → higher rate)
+- **Dividend Pool** = Quarterly Profit × Dividend Rate 
 - **Organization Total Assets** = Cash Contributions + Bank Balances + Outstanding Loans
 - **Member's Asset Proportion** = Member's Total Assets / Organization Total Assets
 - **Individual Dividend** = Dividend Pool × Member's Asset Proportion
 
-This approach better rewards members based on their financial contributions to the organization. Members with higher contributions receive proportionally higher dividends.
+This approach better rewards members based on their financial contributions to the organization. Members with higher contributions receive proportionally higher dividends, and the overall dividend rate adjusts dynamically based on the organization's financial health.
+
+#### Dividend Rate Calculation Logic
+
+The dividend rate is automatically determined using the following guidelines:
+- Default rate: 8.5%
+- For organizations with total assets > Rs. 1,000,000: 10.0%
+- For organizations with total assets > Rs. 500,000: 9.0%
+- For organizations with total assets < Rs. 100,000: 7.0%
+
+This dynamic rate adjustment ensures that the organization remains financially stable while providing appropriate returns to members.
 
 ```mermaid
 flowchart TD
@@ -188,19 +199,20 @@ Calculations:
 
 Given:
 - Quarterly Profit: Rs. 100,000
-- Dividend Rate: 8.5%
-- Organization Total Assets: Rs. 1,000,000
+- Organization Total Assets: Rs. 1,000,000 (which determines the dividend rate)
 - Member A Total Assets: Rs. 200,000
 - Member B Total Assets: Rs. 50,000
 
 Calculations:
-1. Dividend Pool = Rs. 100,000 × 8.5% = Rs. 8,500
-2. Member A Asset Proportion = Rs. 200,000 / Rs. 1,000,000 = 0.2 (20%)
-3. Member B Asset Proportion = Rs. 50,000 / Rs. 1,000,000 = 0.05 (5%)
-4. Member A Dividend = Rs. 8,500 × 0.2 = Rs. 1,700
-5. Member B Dividend = Rs. 8,500 × 0.05 = Rs. 425
+1. Automatic Dividend Rate Determination: 
+   - Since total assets are Rs. 1,000,000, the system selects 10.0% rate
+2. Dividend Pool = Rs. 100,000 × 10.0% = Rs. 10,000
+3. Member A Asset Proportion = Rs. 200,000 / Rs. 1,000,000 = 0.2 (20%)
+4. Member B Asset Proportion = Rs. 50,000 / Rs. 1,000,000 = 0.05 (5%)
+5. Member A Dividend = Rs. 10,000 × 0.2 = Rs. 2,000
+6. Member B Dividend = Rs. 10,000 × 0.05 = Rs. 500
 
-This proportional approach ensures that members with higher financial contributions receive proportionally higher dividend payments, creating a more equitable system that incentivizes contribution to the organization's capital base.
+This proportional approach with automatic rate calculation ensures that members with higher financial contributions receive proportionally higher dividend payments, creating a more equitable system that incentivizes contribution to the organization's capital base.
 
 ### Loan Interest Calculation Example
 

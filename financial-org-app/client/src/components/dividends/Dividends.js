@@ -283,20 +283,18 @@ const Dividends = () => {
     const errors = {};
     
     if (!profitFormData.incomeAmount || profitFormData.incomeAmount <= 0) {
-      errors.incomeAmount = 'Please enter a valid income amount';
+      errors.incomeAmount = 'Income amount must be greater than 0';
     }
     
-    if (!profitFormData.expenseAmount) {
-      errors.expenseAmount = '0 for no expenses or enter valid amount';
-    } else if (isNaN(profitFormData.expenseAmount) || Number(profitFormData.expenseAmount) < 0) {
+    if (profitFormData.expenseAmount < 0) {
       errors.expenseAmount = 'Expense amount cannot be negative';
     }
     
-    if (!profitFormData.dividendRate) {
-      errors.dividendRate = 'Dividend rate is required';
-    } else if (isNaN(profitFormData.dividendRate) || Number(profitFormData.dividendRate) <= 0 || Number(profitFormData.dividendRate) > 100) {
-      errors.dividendRate = 'Enter a valid dividend rate (0-100%)';
+    if (profitFormData.profitAmount <= 0) {
+      errors.profitAmount = 'Profit amount must be greater than 0';
     }
+    
+    // Dividend rate is now automatically calculated, so no validation needed
     
     setProfitFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -305,30 +303,54 @@ const Dividends = () => {
   const calculateProportionalDividends = async () => {
     if (!validateProfitForm()) return;
     
+    setLoading(true);
     try {
-      const params = {
-        quarterlyProfit: Number(profitFormData.profitAmount),
-        dividendRate: Number(profitFormData.dividendRate)
-      };
-      
-      const result = await api.calculateProportionalDividends(params);
-      
-      // Get organization assets
+      // Get organization assets first
       const assets = await api.calculateOrgAssets();
       setOrgAssets(assets);
       
-      // Set dividend distribution
-      setDividendDistribution(result.dividends);
+      // Calculate appropriate dividend rate based on organization's financial health
+      // This is a simplified example - you can implement more complex logic
+      let calculatedRate = 8.5; // Default rate
       
-      return result;
-    } catch (error) {
-      console.error("Error calculating proportional dividends:", error);
+      // Example: If total assets are high, we can afford a higher dividend rate
+      if (assets.totalAssets > 1000000) {
+        calculatedRate = 10.0;
+      } else if (assets.totalAssets > 500000) {
+        calculatedRate = 9.0;
+      } else if (assets.totalAssets < 100000) {
+        calculatedRate = 7.0;
+      }
+      
+      // Update the profit form data with the calculated rate
+      setProfitFormData(prevData => ({
+        ...prevData,
+        dividendRate: calculatedRate
+      }));
+      
+      // Now calculate the proportional dividends with the calculated rate
+      const result = await api.calculateProportionalDividends({
+        quarterlyProfit: profitFormData.profitAmount,
+        dividendRate: calculatedRate,
+        quarter: profitFormData.quarter,
+        year: profitFormData.year
+      });
+      
+      setDividendDistribution(result.dividends);
       setSnackbar({
         open: true,
-        message: 'Error calculating proportional dividends: ' + error.message,
+        message: 'Dividend distribution calculated successfully',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error calculating proportional dividends:', error);
+      setSnackbar({
+        open: true,
+        message: 'Error calculating dividends: ' + error.message,
         severity: 'error'
       });
-      return null;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -339,53 +361,59 @@ const Dividends = () => {
   const handleCalculateProfitsSubmit = async () => {
     if (!validateProfitForm()) return;
     
+    setLoading(true);
     try {
-      // First calculate the proportional dividends
-      const proportionalResult = await calculateProportionalDividends();
-      
-      if (!proportionalResult) return;
+      // First, make sure we have calculated the dividends and have a valid dividend rate
+      if (!dividendDistribution || !profitFormData.dividendRate) {
+        await calculateProportionalDividends();
+      }
       
       // Create the dividend entry
-      const dividendData = {
-        quarterEndDate: profitFormData.quarterEndDate,
-        totalShares: members.reduce((sum, m) => sum + (m.shares || 0), 0),
-        profitAmount: Number(profitFormData.profitAmount),
-        dividendRate: Number(profitFormData.dividendRate),
-        calculationDate: new Date().toISOString().split('T')[0]
+      const dividend = {
+        date: profitFormData.endDate,
+        quarter: profitFormData.quarter,
+        year: profitFormData.year,
+        amount: profitFormData.profitAmount * (profitFormData.dividendRate / 100),
+        rate: profitFormData.dividendRate,
+        description: `Q${profitFormData.quarter} ${profitFormData.year} Dividend`,
+        profitAmount: profitFormData.profitAmount,
+        distributionMethod: 'proportional'
       };
       
-      // Add the dividend to the database
-      const addedDividend = await api.addDividend(dividendData);
+      const newDividend = await api.addDividend(dividend);
       
-      // For each member in the dividend distribution, create a dividend payment
-      for (const memberDividend of proportionalResult.dividends) {
-        if (memberDividend.dividendAmount > 0) {
-          await api.addDividendPayment({
-            dividendId: addedDividend.id,
-            memberId: memberDividend.memberId,
-            shares: members.find(m => m.id === memberDividend.memberId)?.shares || 0,
-            amount: memberDividend.dividendAmount,
-            status: 'processed',
-            paymentDate: new Date().toISOString().split('T')[0]
-          });
-        }
+      // Process payments for each member
+      const payments = dividendDistribution.map(item => ({
+        dividendId: newDividend.id,
+        memberId: item.memberId,
+        amount: item.amount,
+        shares: item.proportion * 100, // Store proportion as percentage for easier display
+        status: 'pending',
+        paymentDate: new Date().toISOString().split('T')[0]
+      }));
+      
+      // Add all payments
+      for (const payment of payments) {
+        await api.addDividendPayment(payment);
       }
       
       setSnackbar({
-        open: true,
-        message: 'Profit calculated and dividend payments processed successfully',
+        open: true, 
+        message: 'Dividend calculated and saved successfully',
         severity: 'success'
       });
       
       handleCalculateProfitsClose();
       fetchDividendData();
     } catch (error) {
-      console.error("Error calculating profits:", error);
+      console.error('Error saving dividend calculation:', error);
       setSnackbar({
         open: true,
-        message: 'Error calculating profits: ' + error.message,
+        message: 'Error saving dividend: ' + error.message,
         severity: 'error'
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -407,15 +435,12 @@ const Dividends = () => {
     // Format date as YYYY-MM-DD for input field
     const formattedDate = quarterEndDate.toISOString().split('T')[0];
     
-    // Default dividend rate
-    const defaultDividendRate = 8.5;
-    
+    // Remove the dividend rate as it will be calculated automatically
     setProfitFormData({
       ...profitFormData,
       quarter: currentQuarter,
       year: currentYear,
-      endDate: formattedDate,
-      dividendRate: defaultDividendRate
+      endDate: formattedDate
     });
     
     // Try to fetch financial data for this quarter
@@ -675,20 +700,6 @@ const Dividends = () => {
               />
             </Grid>
             
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Dividend Rate (%)"
-                type="number"
-                name="dividendRate"
-                value={profitFormData.dividendRate}
-                onChange={handleProfitInputChange}
-                fullWidth
-                InputProps={{
-                  endAdornment: <InputAdornment position="end">%</InputAdornment>,
-                }}
-              />
-            </Grid>
-            
             <Grid item xs={12} sm={4}>
               <TextField
                 label="Income Amount"
@@ -731,6 +742,18 @@ const Dividends = () => {
                 }}
               />
             </Grid>
+
+            {/* Display calculated dividend rate as read-only information */}
+            {profitFormData.dividendRate && (
+              <Grid item xs={12}>
+                <Typography variant="subtitle1">
+                  Calculated Dividend Rate: {profitFormData.dividendRate}%
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  Based on organization's total assets: {orgAssets?.totalAssets ? api.formatCurrency(orgAssets.totalAssets) : '...'}
+                </Typography>
+              </Grid>
+            )}
 
             <Grid item xs={12}>
               <Button 
