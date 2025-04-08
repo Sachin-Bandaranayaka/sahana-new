@@ -38,21 +38,21 @@ const Layout = () => {
   };
 
   const menuItems = [
-    { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
-    { text: 'Members', icon: <PeopleIcon />, path: '/members' },
-    { text: 'Cash Book', icon: <ReceiptIcon />, path: '/cashbook' },
-    { text: 'Loans', icon: <AttachMoneyIcon />, path: '/loans' },
-    { text: 'Dividends', icon: <SavingsIcon />, path: '/dividends' },
-    { text: 'Bank Accounts', icon: <AccountBalanceIcon />, path: '/accounts' },
-    { text: 'Reports', icon: <AssessmentIcon />, path: '/reports' },
-    { text: 'Settings', icon: <SettingsIcon />, path: '/settings' },
+    { text: 'Dashboard (පුවරුව)', icon: <DashboardIcon />, path: '/' },
+    { text: 'Members (සාමාජිකයින්)', icon: <PeopleIcon />, path: '/members' },
+    { text: 'Cash Book (මුදල් පොත)', icon: <ReceiptIcon />, path: '/cashbook' },
+    { text: 'Loans (ණය)', icon: <AttachMoneyIcon />, path: '/loans' },
+    { text: 'Dividends (ලාභාංශ)', icon: <SavingsIcon />, path: '/dividends' },
+    { text: 'Bank Accounts (බැංකු ගිණුම්)', icon: <AccountBalanceIcon />, path: '/accounts' },
+    { text: 'Reports (වාර්තා)', icon: <AssessmentIcon />, path: '/reports' },
+    { text: 'Settings (සැකසුම්)', icon: <SettingsIcon />, path: '/settings' },
   ];
 
   const drawer = (
     <div>
       <Toolbar>
         <Typography variant="h6" noWrap component="div">
-          Sahana Welfare
+          Sahana Welfare (සහන සුභසාධක)
         </Typography>
       </Toolbar>
       <List>
@@ -97,7 +97,7 @@ const Layout = () => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div">
-            Sahana Welfare Management
+            Sahana Welfare Management (සහන සුභසාධක කළමනාකරණය)
           </Typography>
         </Toolbar>
       </AppBar>

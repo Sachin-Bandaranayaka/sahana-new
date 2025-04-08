@@ -64,23 +64,23 @@ const CashBook = () => {
   // Categories by transaction type
   const categories = {
     income: [
-      'Membership Fee',
-      'Loan Interest',
-      'Contribution',
-      'Investment Return',
-      'Late Payment Fee',
-      'Other Income'
+      'Membership Fee (සාමාජික ගාස්තු)',
+      'Loan Interest (ණය පොලී)',
+      'Contribution (දායකත්වය)',
+      'Investment Return (ආයෝජන ප්‍රතිලාභ)',
+      'Late Payment Fee (ප්‍රමාද ගෙවීම් ගාස්තු)',
+      'Other Income (වෙනත් ආදායම්)'
     ],
     expense: [
-      'Administrative',
-      'Office Supplies',
-      'Rent',
-      'Utilities',
-      'Travel',
-      'Events',
-      'Dividends Paid',
-      'Bank Charges',
-      'Other Expense'
+      'Administrative (පරිපාලන)',
+      'Office Supplies (කාර්යාල සැපයුම්)',
+      'Rent (කුලිය)',
+      'Utilities (උපයෝගිතා)',
+      'Travel (ගමන් වියදම්)',
+      'Events (උත්සව)',
+      'Dividends Paid (ගෙවන ලද ලාභාංශ)',
+      'Bank Charges (බැංකු ගාස්තු)',
+      'Other Expense (වෙනත් වියදම්)'
     ]
   };
 
@@ -196,10 +196,10 @@ const CashBook = () => {
     
     // Validate member selection for relevant income categories
     if (formData.type === 'income' && 
-        (formData.category === 'Membership Fee' || 
-         formData.category === 'Loan Interest' || 
-         formData.category === 'Contribution' || 
-         formData.category === 'Late Payment Fee') && 
+        (formData.category === 'Membership Fee (සාමාජික ගාස්තු)' || 
+         formData.category === 'Loan Interest (ණය පොලී)' || 
+         formData.category === 'Contribution (දායකත්වය)' || 
+         formData.category === 'Late Payment Fee (ප්‍රමාද ගෙවීම් ගාස්තු)') && 
         !formData.memberId) {
       errors.memberId = 'Member is required for this category';
     }
@@ -318,16 +318,18 @@ const CashBook = () => {
   };
 
   return (
-    <Box>
+    <Box sx={{ py: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" gutterBottom>Cash Book</Typography>
-        <Button
-          variant="contained"
-          color="primary"
+        <Typography variant="h4" component="h1">
+          Cash Book (මුදල් පොත)
+        </Typography>
+        <Button 
+          variant="contained" 
+          color="primary" 
           startIcon={<AddIcon />}
           onClick={() => handleOpenDialog('add')}
         >
-          Add Transaction
+          Add Transaction (ගනුදෙනුවක් එකතු කරන්න)
         </Button>
       </Box>
 
@@ -353,140 +355,144 @@ const CashBook = () => {
         </Grid>
       </Grid>
 
+      <Paper sx={{ mb: 3 }}>
+        <Tabs
+          value={tabValue}
+          onChange={handleTabChange}
+          indicatorColor="primary"
+          textColor="primary"
+          centered
+        >
+          <Tab label="All Transactions (සියලු ගනුදෙනු)" />
+          <Tab label="Income (ආදායම්)" />
+          <Tab label="Expenses (වියදම්)" />
+        </Tabs>
+      </Paper>
+
       {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', my: 5 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
           <CircularProgress />
         </Box>
       ) : (
         <>
-          <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-              <Tabs value={tabValue} onChange={handleTabChange} aria-label="transaction tabs">
-                <Tab label="All Transactions" />
-                <Tab label="Income" />
-                <Tab label="Expense" />
-              </Tabs>
-            </Box>
-            
-            <TableContainer sx={{ maxHeight: 440 }}>
-              <Table stickyHeader>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Date</TableCell>
-                    <TableCell>Type</TableCell>
-                    <TableCell>Category</TableCell>
-                    <TableCell>Description</TableCell>
-                    <TableCell>Member</TableCell>
-                    <TableCell>Amount</TableCell>
-                    <TableCell align="right">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filteredTransactions
-                    .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                    .map((transaction) => (
-                      <TableRow key={transaction.id} hover>
-                        <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
-                        <TableCell>
-                          {transaction.type === 'income' ? (
-                            <Chip 
-                              icon={<IncomeIcon />} 
-                              label="Income" 
-                              color="success" 
-                              size="small" 
-                            />
-                          ) : (
-                            <Chip 
-                              icon={<ExpenseIcon />} 
-                              label="Expense" 
-                              color="error" 
-                              size="small" 
-                            />
-                          )}
-                        </TableCell>
-                        <TableCell>{transaction.category}</TableCell>
-                        <TableCell>{transaction.description}</TableCell>
-                        <TableCell>{transaction.memberName || '-'}</TableCell>
-                        <TableCell>{formatCurrency(transaction.amount)}</TableCell>
-                        <TableCell align="right">
-                          <IconButton 
-                            color="primary" 
-                            onClick={() => handleOpenDialog('edit', transaction)}
-                            size="small"
-                          >
-                            <EditIcon />
-                          </IconButton>
-                          <IconButton 
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Date (දිනය)</TableCell>
+                  <TableCell>Type (වර්ගය)</TableCell>
+                  <TableCell>Category (ප්‍රවර්ගය)</TableCell>
+                  <TableCell>Description (විස්තරය)</TableCell>
+                  <TableCell align="right">Amount (මුදල)</TableCell>
+                  <TableCell align="right">Actions (ක්‍රියා)</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredTransactions
+                  .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                  .map((transaction) => (
+                    <TableRow key={transaction.id} hover>
+                      <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        {transaction.type === 'income' ? (
+                          <Chip 
+                            icon={<IncomeIcon />} 
+                            label="Income" 
+                            color="success" 
+                            size="small" 
+                          />
+                        ) : (
+                          <Chip 
+                            icon={<ExpenseIcon />} 
+                            label="Expense" 
                             color="error" 
-                            onClick={() => handleDeleteTransaction(transaction.id)}
-                            size="small"
-                          >
-                            <DeleteIcon />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-            <TablePagination
-              rowsPerPageOptions={[5, 10, 25]}
-              component="div"
-              count={filteredTransactions.length}
-              rowsPerPage={rowsPerPage}
-              page={page}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-            />
-          </Paper>
+                            size="small" 
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell>{transaction.category}</TableCell>
+                      <TableCell>{transaction.description}</TableCell>
+                      <TableCell>{formatCurrency(transaction.amount)}</TableCell>
+                      <TableCell align="right">
+                        <IconButton 
+                          color="primary" 
+                          onClick={() => handleOpenDialog('edit', transaction)}
+                          size="small"
+                        >
+                          <EditIcon />
+                        </IconButton>
+                        <IconButton 
+                          color="error" 
+                          onClick={() => handleDeleteTransaction(transaction.id)}
+                          size="small"
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <TablePagination
+            rowsPerPageOptions={[5, 10, 25]}
+            component="div"
+            count={filteredTransactions.length}
+            rowsPerPage={rowsPerPage}
+            page={page}
+            onPageChange={handleChangePage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+          />
         </>
       )}
 
       {/* Add/Edit Transaction Dialog */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
         <DialogTitle>
-          {editMode ? 'Edit Transaction' : 'Add New Transaction'}
+          {editMode ? 'Edit Transaction (ගනුදෙනුව සංස්කරණය කරන්න)' : 'Add New Transaction (නව ගනුදෙනුවක් එකතු කරන්න)'}
         </DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} sm={6}>
               <TextField
-                fullWidth
-                label="Date"
                 name="date"
+                label="Date (දිනය)"
                 type="date"
                 value={formData.date}
                 onChange={handleInputChange}
+                fullWidth
+                required
                 InputLabelProps={{ shrink: true }}
                 error={!!formErrors.date}
                 helperText={formErrors.date}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} sm={6}>
               <TextField
-                fullWidth
-                label="Transaction Type"
-                name="type"
                 select
+                name="type"
+                label="Transaction Type (ගනුදෙනු වර්ගය)"
                 value={formData.type}
                 onChange={handleInputChange}
+                fullWidth
+                required
               >
-                <MenuItem value="income">Income</MenuItem>
-                <MenuItem value="expense">Expense</MenuItem>
+                <MenuItem value="income">Income (ආදායම)</MenuItem>
+                <MenuItem value="expense">Expense (වියදම)</MenuItem>
               </TextField>
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} sm={6}>
               <TextField
-                fullWidth
-                label="Category"
-                name="category"
                 select
+                name="category"
+                label="Category (ප්‍රවර්ගය)"
                 value={formData.category}
                 onChange={handleInputChange}
+                fullWidth
+                required
                 error={!!formErrors.category}
                 helperText={formErrors.category}
               >
-                <MenuItem value="">Select a category</MenuItem>
                 {categories[formData.type].map((category) => (
                   <MenuItem key={category} value={category}>
                     {category}
@@ -494,46 +500,37 @@ const CashBook = () => {
                 ))}
               </TextField>
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} sm={6}>
               <TextField
-                fullWidth
-                label="Amount"
                 name="amount"
+                label="Amount (මුදල)"
                 type="number"
                 value={formData.amount}
                 onChange={handleInputChange}
-                error={!!formErrors.amount}
-                helperText={formErrors.amount}
+                fullWidth
+                required
                 InputProps={{
                   startAdornment: <InputAdornment position="start">Rs.</InputAdornment>,
+                  inputProps: { min: 0 }
                 }}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Description"
-                name="description"
-                value={formData.description}
-                onChange={handleInputChange}
-                error={!!formErrors.description}
-                helperText={formErrors.description}
+                error={!!formErrors.amount}
+                helperText={formErrors.amount}
               />
             </Grid>
             {formData.type === 'income' && (
-              ['Membership Fee', 'Loan Interest', 'Contribution', 'Late Payment Fee'].includes(formData.category) && (
-                <Grid item xs={12} md={6}>
+              ['Membership Fee (සාමාජික ගාස්තු)', 'Loan Interest (ණය පොලී)', 'Contribution (දායකත්වය)'].includes(formData.category) && (
+                <Grid item xs={12} sm={6}>
                   <TextField
-                    fullWidth
-                    label="Member"
-                    name="memberId"
                     select
+                    name="memberId"
+                    label="Related Member (අදාළ සාමාජික)"
                     value={formData.memberId}
                     onChange={handleInputChange}
+                    fullWidth
                     error={!!formErrors.memberId}
                     helperText={formErrors.memberId}
                   >
-                    <MenuItem value="">Select a member</MenuItem>
+                    <MenuItem value="">None (නැත)</MenuItem>
                     {members.map((member) => (
                       <MenuItem key={member.id} value={member.id}>
                         {member.name}
@@ -543,16 +540,25 @@ const CashBook = () => {
                 </Grid>
               )
             )}
+            <Grid item xs={12}>
+              <TextField
+                name="description"
+                label="Description (විස්තරය)"
+                value={formData.description}
+                onChange={handleInputChange}
+                fullWidth
+                multiline
+                rows={2}
+              />
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button 
-            onClick={handleSubmit} 
-            variant="contained" 
-            color="primary"
-          >
-            {editMode ? 'Update' : 'Add'}
+          <Button onClick={handleCloseDialog} color="primary">
+            Cancel (අවලංගු කරන්න)
+          </Button>
+          <Button onClick={handleSubmit} color="primary" variant="contained">
+            {editMode ? 'Update (යාවත්කාලීන කරන්න)' : 'Add (එකතු කරන්න)'}
           </Button>
         </DialogActions>
       </Dialog>

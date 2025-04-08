@@ -797,4 +797,169 @@ ipcMain.handle('restore-data', async (event, filePath) => {
     console.error('Restore error:', error);
     return { success: false, message: error.message };
   }
+});
+
+// Report Generation
+ipcMain.handle('generate-report', async (event, reportType, params) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const { dialog } = require('electron');
+    
+    console.log(`Generating ${reportType} report with params:`, params);
+    
+    // Show save dialog to get output location
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Save Report',
+      defaultPath: `${reportType}-report.${params.format === 'pdf' ? 'pdf' : 'xlsx'}`,
+      filters: [{ 
+        name: params.format === 'pdf' ? 'PDF Documents' : 'Excel Spreadsheets', 
+        extensions: [params.format === 'pdf' ? 'pdf' : 'xlsx'] 
+      }]
+    });
+    
+    if (canceled || !filePath) {
+      return { success: false, message: 'Report generation cancelled' };
+    }
+    
+    // Generate report data based on type
+    let reportData = { reportType, generatedAt: new Date().toISOString() };
+    
+    switch (reportType) {
+      case 'member-statement':
+        // Get member data
+        const member = await db.get('SELECT * FROM members WHERE id = ?', params.memberId);
+        if (!member) {
+          return { success: false, message: 'Member not found' };
+        }
+        
+        // Get member transactions
+        const transactions = await db.all(
+          'SELECT * FROM transactions WHERE member_id = ? AND date BETWEEN ? AND ? ORDER BY date DESC',
+          params.memberId, params.startDate, params.endDate
+        );
+        
+        reportData.member = member;
+        reportData.transactions = transactions || [];
+        reportData.title = `Member Statement - ${member.name}`;
+        break;
+        
+      case 'cash-flow':
+        // Get income and expense transactions
+        const income = await db.all(
+          "SELECT type, SUM(amount) as total FROM transactions WHERE type = 'income' AND date BETWEEN ? AND ? GROUP BY category",
+          params.startDate, params.endDate
+        );
+        
+        const expenses = await db.all(
+          "SELECT type, SUM(amount) as total FROM transactions WHERE type = 'expense' AND date BETWEEN ? AND ? GROUP BY category",
+          params.startDate, params.endDate
+        );
+        
+        reportData.income = income || [];
+        reportData.expenses = expenses || [];
+        reportData.title = 'Cash Flow Report';
+        break;
+        
+      case 'loan-summary':
+        // Get active loans
+        const loans = await db.all('SELECT * FROM loans WHERE status = "active"');
+        
+        // Get loan payments in the period
+        const payments = await db.all(
+          'SELECT * FROM loan_payments WHERE payment_date BETWEEN ? AND ?',
+          params.startDate, params.endDate
+        );
+        
+        reportData.loans = loans || [];
+        reportData.payments = payments || [];
+        reportData.title = 'Loan Summary Report';
+        break;
+        
+      case 'quarterly-profit':
+        // Get profit components
+        const interest = await db.get(
+          "SELECT SUM(amount) as total FROM transactions WHERE type = 'income' AND category = 'interest' AND date BETWEEN ? AND ?",
+          params.startDate, params.endDate
+        );
+        
+        const otherIncome = await db.get(
+          "SELECT SUM(amount) as total FROM transactions WHERE type = 'income' AND category != 'interest' AND date BETWEEN ? AND ?",
+          params.startDate, params.endDate
+        );
+        
+        const expensesTotal = await db.get(
+          "SELECT SUM(amount) as total FROM transactions WHERE type = 'expense' AND date BETWEEN ? AND ?",
+          params.startDate, params.endDate
+        );
+        
+        const totalIncome = (interest?.total || 0) + (otherIncome?.total || 0);
+        const totalExpenses = expensesTotal?.total || 0;
+        const netProfit = totalIncome - totalExpenses;
+        
+        reportData.profit = {
+          interest: interest?.total || 0,
+          otherIncome: otherIncome?.total || 0,
+          expenses: totalExpenses,
+          totalIncome,
+          netProfit
+        };
+        reportData.title = 'Quarterly Profit Report';
+        break;
+        
+      case 'balance-sheet':
+        // Get assets
+        const assets = await db.get(
+          "SELECT SUM(CASE WHEN type = 'loan' THEN balance ELSE 0 END) as loans, " +
+          "SUM(CASE WHEN type = 'bank' THEN balance ELSE 0 END) as bank " +
+          "FROM accounts"
+        );
+        
+        // Get liabilities
+        const liabilities = await db.get(
+          "SELECT SUM(amount) as total FROM liabilities"
+        );
+        
+        // Get equity
+        const equity = await db.get(
+          "SELECT SUM(amount) as total FROM equity"
+        );
+        
+        reportData.balanceSheet = {
+          assets: {
+            loans: assets?.loans || 0,
+            bank: assets?.bank || 0,
+            total: (assets?.loans || 0) + (assets?.bank || 0)
+          },
+          liabilities: liabilities?.total || 0,
+          equity: equity?.total || 0
+        };
+        reportData.title = 'Balance Sheet Report';
+        break;
+        
+      default:
+        return { success: false, message: 'Invalid report type' };
+    }
+    
+    // Add period to report data
+    reportData.period = {
+      startDate: params.startDate,
+      endDate: params.endDate
+    };
+    
+    // For demo purposes, just write the JSON to a file
+    // In a real implementation, you would convert this to PDF or Excel
+    fs.writeFileSync(filePath, JSON.stringify(reportData, null, 2));
+    
+    console.log(`Report saved to ${filePath}`);
+    
+    return { 
+      success: true, 
+      message: `Report generated successfully and saved to ${filePath}`,
+      filePath
+    };
+  } catch (error) {
+    console.error('Error generating report:', error);
+    return { success: false, message: error.message };
+  }
 }); 

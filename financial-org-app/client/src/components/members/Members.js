@@ -21,7 +21,8 @@ import {
   IconButton,
   Chip,
   Snackbar,
-  Alert
+  Alert,
+  MenuItem
 } from '@mui/material';
 import { 
   Add as AddIcon, 
@@ -223,151 +224,155 @@ const Members = () => {
   };
 
   return (
-    <Box>
+    <Box sx={{ py: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" gutterBottom>Members</Typography>
-        <Button
-          variant="contained"
-          color="primary"
+        <Typography variant="h4" component="h1">
+          Members Management (සාමාජික කළමනාකරණය)
+        </Typography>
+        <Button 
+          variant="contained" 
+          color="primary" 
           startIcon={<AddIcon />}
           onClick={() => handleOpenDialog('add')}
         >
-          Add Member
+          Add Member (සාමාජිකයෙකු එකතු කරන්න)
         </Button>
       </Box>
-
+      
       {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', my: 5 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
           <CircularProgress />
         </Box>
       ) : (
         <>
-          <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-            <TableContainer sx={{ maxHeight: 440 }}>
-              <Table stickyHeader>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Name</TableCell>
-                    <TableCell>Contact</TableCell>
-                    <TableCell>Join Date</TableCell>
-                    <TableCell>Shares</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell align="right">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {members
-                    .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                    .map((member) => (
-                      <TableRow key={member.id} hover>
-                        <TableCell>
-                          <Typography variant="body1">{member.name}</Typography>
-                          <Typography variant="body2" color="textSecondary">{member.address}</Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-                              <PhoneIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />
-                              <Typography variant="body2">{member.mobile}</Typography>
-                            </Box>
-                            {member.email && (
-                              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                <EmailIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />
-                                <Typography variant="body2">{member.email}</Typography>
-                              </Box>
-                            )}
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Name (නම)</TableCell>
+                  <TableCell>Contact (සම්බන්ධතා)</TableCell>
+                  <TableCell>Join Date (එක්වූ දිනය)</TableCell>
+                  <TableCell>Shares (කොටස්)</TableCell>
+                  <TableCell>Status (තත්වය)</TableCell>
+                  <TableCell align="right">Actions (ක්‍රියා)</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {members
+                  .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                  .map((member) => (
+                    <TableRow key={member.id} hover>
+                      <TableCell>
+                        <Typography variant="body1">{member.name}</Typography>
+                        <Typography variant="body2" color="textSecondary">{member.address}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                            <PhoneIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />
+                            <Typography variant="body2">{member.mobile}</Typography>
                           </Box>
-                        </TableCell>
-                        <TableCell>{new Date(member.joinDate).toLocaleDateString()}</TableCell>
-                        <TableCell>{member.shares}</TableCell>
-                        <TableCell>
-                          <Chip 
-                            label={member.status === 'active' ? 'Active' : 'Inactive'} 
-                            color={member.status === 'active' ? 'success' : 'default'}
-                            size="small"
-                          />
-                        </TableCell>
-                        <TableCell align="right">
-                          <IconButton 
-                            color="primary" 
-                            onClick={() => handleOpenDialog('edit', member)}
-                            size="small"
-                          >
-                            <EditIcon />
-                          </IconButton>
-                          <IconButton 
-                            color="error" 
-                            onClick={() => handleDeleteMember(member.id)}
-                            size="small"
-                          >
-                            <DeleteIcon />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-            <TablePagination
-              rowsPerPageOptions={[5, 10, 25]}
-              component="div"
-              count={members.length}
-              rowsPerPage={rowsPerPage}
-              page={page}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-            />
-          </Paper>
+                          {member.email && (
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                              <EmailIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />
+                              <Typography variant="body2">{member.email}</Typography>
+                            </Box>
+                          )}
+                        </Box>
+                      </TableCell>
+                      <TableCell>{new Date(member.joinDate).toLocaleDateString()}</TableCell>
+                      <TableCell>{member.shares}</TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={member.status === 'active' ? 'Active' : 'Inactive'} 
+                          color={member.status === 'active' ? 'success' : 'default'}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <IconButton 
+                          color="primary" 
+                          onClick={() => handleOpenDialog('edit', member)}
+                          size="small"
+                        >
+                          <EditIcon />
+                        </IconButton>
+                        <IconButton 
+                          color="error" 
+                          onClick={() => handleDeleteMember(member.id)}
+                          size="small"
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <TablePagination
+            rowsPerPageOptions={[5, 10, 25]}
+            component="div"
+            count={members.length}
+            rowsPerPage={rowsPerPage}
+            page={page}
+            onPageChange={handleChangePage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+          />
         </>
       )}
 
       {/* Add/Edit Member Dialog */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
-        <DialogTitle>{editMode ? 'Edit Member' : 'Add New Member'}</DialogTitle>
+        <DialogTitle>
+          {editMode ? 'Edit Member (සාමාජිකයා සංස්කරණය කරන්න)' : 'Add New Member (නව සාමාජිකයෙකු එකතු කරන්න)'}
+        </DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} sm={6}>
               <TextField
-                fullWidth
-                label="Full Name"
                 name="name"
+                label="Full Name (සම්පූර්ණ නම)"
                 value={formData.name}
                 onChange={handleInputChange}
+                fullWidth
+                required
                 error={!!formErrors.name}
                 helperText={formErrors.name}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} sm={6}>
               <TextField
-                fullWidth
-                label="Mobile Number"
                 name="mobile"
+                label="Mobile Number (ජංගම දුරකථන අංකය)"
                 value={formData.mobile}
                 onChange={handleInputChange}
+                fullWidth
+                required
                 error={!!formErrors.mobile}
                 helperText={formErrors.mobile}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} sm={6}>
               <TextField
-                fullWidth
-                label="Email"
                 name="email"
-                type="email"
+                label="Email Address (විද්‍යුත් තැපෑල)"
                 value={formData.email}
                 onChange={handleInputChange}
+                fullWidth
                 error={!!formErrors.email}
                 helperText={formErrors.email}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} sm={6}>
               <TextField
-                fullWidth
-                label="Join Date"
                 name="joinDate"
+                label="Join Date (එක්වූ දිනය)"
                 type="date"
                 value={formData.joinDate}
                 onChange={handleInputChange}
+                fullWidth
+                required
                 InputLabelProps={{ shrink: true }}
                 error={!!formErrors.joinDate}
                 helperText={formErrors.joinDate}
@@ -375,53 +380,50 @@ const Members = () => {
             </Grid>
             <Grid item xs={12}>
               <TextField
-                fullWidth
-                label="Address"
                 name="address"
-                multiline
-                rows={2}
+                label="Address (ලිපිනය)"
                 value={formData.address}
                 onChange={handleInputChange}
+                fullWidth
+                multiline
+                rows={2}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} sm={6}>
               <TextField
-                fullWidth
-                label="Shares"
                 name="shares"
+                label="Shares Owned (හිමි කොටස්)"
                 type="number"
                 value={formData.shares}
                 onChange={handleInputChange}
+                fullWidth
+                InputProps={{ inputProps: { min: 0 } }}
                 error={!!formErrors.shares}
                 helperText={formErrors.shares}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} sm={6}>
               <TextField
-                fullWidth
-                label="Status"
                 name="status"
                 select
+                label="Status (තත්වය)"
                 value={formData.status}
                 onChange={handleInputChange}
-                SelectProps={{
-                  native: true,
-                }}
+                fullWidth
               >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
+                <MenuItem value="active">Active (ක්‍රියාකාරී)</MenuItem>
+                <MenuItem value="inactive">Inactive (අක්‍රිය)</MenuItem>
+                <MenuItem value="suspended">Suspended (අත්හිටුවා ඇත)</MenuItem>
               </TextField>
             </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button 
-            onClick={handleSubmit} 
-            variant="contained" 
-            color="primary"
-          >
-            {editMode ? 'Update' : 'Add'}
+          <Button onClick={handleCloseDialog} color="primary">
+            Cancel (අවලංගු කරන්න)
+          </Button>
+          <Button onClick={handleSubmit} color="primary" variant="contained">
+            {editMode ? 'Update (යාවත්කාලීන කරන්න)' : 'Add (එකතු කරන්න)'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -13,7 +13,10 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Divider
+  Divider,
+  CircularProgress,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import {
   InsertDriveFile as FileIcon,
@@ -25,20 +28,23 @@ import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 
+// Window API access
+const api = window.api;
+
 const Reports = () => {
+  // State for form controls
   const [reportType, setReportType] = useState('');
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
   const [memberId, setMemberId] = useState('');
   
-  const members = [
-    { id: 1, name: 'Rajiv Perera' },
-    { id: 2, name: 'Saman Fernando' },
-    { id: 3, name: 'Priya Jayawardena' },
-    { id: 4, name: 'Kumara Silva' },
-    { id: 5, name: 'Nilmini Dissanayake' }
-  ];
+  // State for data and UI
+  const [members, setMembers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [notification, setNotification] = useState({ open: false, message: '', severity: 'info' });
   
+  // Report types definition
   const reportTypes = [
     { id: 'member-statement', name: 'Member Statement', description: 'Detailed statement of a member\'s contributions, loans, and dividends', icon: <FileIcon /> },
     { id: 'cash-flow', name: 'Cash Flow Report', description: 'Summary of all cash inflows and outflows', icon: <FileIcon /> },
@@ -47,9 +53,79 @@ const Reports = () => {
     { id: 'balance-sheet', name: 'Balance Sheet', description: 'Statement of assets, liabilities, and equity', icon: <FileIcon /> }
   ];
 
-  const handleExportReport = (format) => {
-    // In production, this would generate and download a report
-    alert(`Generating ${reportType} report in ${format} format for the period ${startDate ? startDate.toLocaleDateString() : 'N/A'} to ${endDate ? endDate.toLocaleDateString() : 'N/A'}`);
+  // Fetch members when component mounts
+  useEffect(() => {
+    const fetchMembers = async () => {
+      try {
+        setLoading(true);
+        const result = await api.getMembers();
+        if (result && Array.isArray(result)) {
+          setMembers(result.map(member => ({
+            id: member.id,
+            name: `${member.first_name} ${member.last_name}`
+          })));
+        }
+      } catch (error) {
+        console.error('Error fetching members:', error);
+        setNotification({
+          open: true,
+          message: 'Failed to load members data',
+          severity: 'error'
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchMembers();
+  }, []);
+
+  // Handle export report
+  const handleExportReport = async (format) => {
+    if (!reportType || !startDate || !endDate || (reportType === 'member-statement' && !memberId)) {
+      return;
+    }
+    
+    try {
+      setGenerating(true);
+      
+      // Prepare parameters for report generation
+      const params = {
+        startDate: startDate.toISOString().split('T')[0], // Format as YYYY-MM-DD
+        endDate: endDate.toISOString().split('T')[0],
+        format: format,
+        memberId: reportType === 'member-statement' ? memberId : undefined
+      };
+      
+      console.log(`Generating ${reportType} report with params:`, params);
+      
+      // Call the API to generate the report
+      const result = await api.generateReport(reportType, params);
+      
+      if (result && result.success) {
+        setNotification({
+          open: true,
+          message: `Report generated successfully. ${result.message || ''}`,
+          severity: 'success'
+        });
+      } else {
+        throw new Error(result.message || 'Failed to generate report');
+      }
+    } catch (error) {
+      console.error('Error generating report:', error);
+      setNotification({
+        open: true,
+        message: `Failed to generate report: ${error.message || 'Unknown error'}`,
+        severity: 'error'
+      });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // Handle notification close
+  const handleCloseNotification = () => {
+    setNotification({ ...notification, open: false });
   };
 
   return (
@@ -98,13 +174,21 @@ const Reports = () => {
                     value={memberId}
                     label="Select Member"
                     onChange={(e) => setMemberId(e.target.value)}
+                    disabled={loading}
                   >
                     <MenuItem value="">Select a member</MenuItem>
-                    {members.map((member) => (
-                      <MenuItem key={member.id} value={member.id}>
-                        {member.name}
+                    {loading ? (
+                      <MenuItem disabled>
+                        <CircularProgress size={20} />
+                        Loading members...
                       </MenuItem>
-                    ))}
+                    ) : (
+                      members.map((member) => (
+                        <MenuItem key={member.id} value={member.id}>
+                          {member.name}
+                        </MenuItem>
+                      ))
+                    )}
                   </Select>
                 </FormControl>
               </Grid>
@@ -133,20 +217,20 @@ const Reports = () => {
             <Button
               variant="contained"
               color="primary"
-              startIcon={<PdfIcon />}
+              startIcon={generating ? <CircularProgress size={20} color="inherit" /> : <PdfIcon />}
               onClick={() => handleExportReport('pdf')}
-              disabled={!reportType || !startDate || !endDate || (reportType === 'member-statement' && !memberId)}
+              disabled={generating || !reportType || !startDate || !endDate || (reportType === 'member-statement' && !memberId)}
             >
-              Export as PDF
+              {generating ? 'Generating...' : 'Export as PDF'}
             </Button>
             <Button
               variant="outlined"
               color="primary"
-              startIcon={<ExcelIcon />}
+              startIcon={generating ? <CircularProgress size={20} color="inherit" /> : <ExcelIcon />}
               onClick={() => handleExportReport('excel')}
-              disabled={!reportType || !startDate || !endDate || (reportType === 'member-statement' && !memberId)}
+              disabled={generating || !reportType || !startDate || !endDate || (reportType === 'member-statement' && !memberId)}
             >
-              Export as Excel
+              {generating ? 'Generating...' : 'Export as Excel'}
             </Button>
           </Box>
         </Paper>
@@ -181,6 +265,22 @@ const Reports = () => {
           ))}
         </Grid>
       </Box>
+      
+      {/* Notification snackbar */}
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={6000}
+        onClose={handleCloseNotification}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert 
+          onClose={handleCloseNotification} 
+          severity={notification.severity} 
+          sx={{ width: '100%' }}
+        >
+          {notification.message}
+        </Alert>
+      </Snackbar>
     </LocalizationProvider>
   );
 };

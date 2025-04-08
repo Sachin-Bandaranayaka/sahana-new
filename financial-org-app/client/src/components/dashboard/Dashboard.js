@@ -89,7 +89,7 @@ const Dashboard = () => {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>Dashboard</Typography>
+      <Typography variant="h4" gutterBottom>Dashboard (පුවරුව)</Typography>
       
       <Grid container spacing={3}>
         <Grid item xs={12} sm={6} md={3}>
@@ -102,7 +102,7 @@ const Dashboard = () => {
                 </Typography>
               </Box>
               <Typography variant="body2" color="text.secondary">
-                Total Members
+                Total Members (මුළු සාමාජිකයින්)
               </Typography>
             </CardContent>
           </Card>
@@ -118,7 +118,7 @@ const Dashboard = () => {
                 </Typography>
               </Box>
               <Typography variant="body2" color="text.secondary">
-                Cash Contributions
+                Cash Contributions (මුදල් දායකත්වය)
               </Typography>
             </CardContent>
           </Card>
@@ -134,7 +134,7 @@ const Dashboard = () => {
                 </Typography>
               </Box>
               <Typography variant="body2" color="text.secondary">
-                Active Loans
+                Active Loans (ක්‍රියාත්මක ණය)
               </Typography>
             </CardContent>
           </Card>
@@ -150,7 +150,7 @@ const Dashboard = () => {
                 </Typography>
               </Box>
               <Typography variant="body2" color="text.secondary">
-                Bank Balance
+                Bank Balance (බැංකු ශේෂය)
               </Typography>
             </CardContent>
           </Card>
@@ -158,10 +158,11 @@ const Dashboard = () => {
       </Grid>
       
       <Box sx={{ mt: 4 }}>
-        <Typography variant="h5" gutterBottom>Welcome to Your Sahana Welfare Dashboard</Typography>
+        <Typography variant="h5" gutterBottom>Welcome to Your Sahana Welfare Dashboard (ඔබගේ සහන සුභසාධක පුවරුවට ස්වාගතයි)</Typography>
         <Typography variant="body1" paragraph>
           This dashboard gives you an overview of your organization's financial status.
           Use the navigation menu to access detailed information and management tools.
+          (මෙම පුවරුව ඔබගේ සංවිධානයේ මූල්‍ය තත්ත්වය පිළිබඳ තොරතුරු ලබා දෙයි. විස්තරාත්මක තොරතුරු සහ කළමනාකරණ මෙවලම් ලබා ගැනීම සඳහා සංචාලන මෙනුව භාවිතා කරන්න.)
         </Typography>
       </Box>
 
@@ -171,7 +172,7 @@ const Dashboard = () => {
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>
               <TrendingUpIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
-              Financial Overview - Last 6 Months
+              Financial Overview - Last 6 Months (මූල්‍ය දළ විශ්ලේෂණය - පසුගිය මාස 6)
             </Typography>
             <Divider sx={{ my: 2 }} />
             <Box sx={{ height: 300 }}>
@@ -196,7 +197,7 @@ const Dashboard = () => {
         <Grid item xs={12} md={4}>
           <Paper sx={{ p: 3, height: '100%' }}>
             <Typography variant="h6" gutterBottom>
-              Asset Distribution
+              Asset Distribution (වත්කම් බෙදාහැරීම)
             </Typography>
             <Divider sx={{ my: 2 }} />
             <Box sx={{ height: 300, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -221,7 +222,7 @@ const Dashboard = () => {
               </ResponsiveContainer>
               <Box sx={{ mt: 2 }}>
                 <Typography variant="body2" color="text.secondary">
-                  Total Assets: {formatCurrency(dashboardData.assetDistribution.reduce((sum, item) => sum + item.value, 0))}
+                  Total Assets: (මුළු වත්කම්:) {formatCurrency(dashboardData.assetDistribution.reduce((sum, item) => sum + item.value, 0))}
                 </Typography>
               </Box>
             </Box>

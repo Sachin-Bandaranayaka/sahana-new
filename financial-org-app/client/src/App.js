@@ -17,11 +17,14 @@ import './index.css';
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#1976d2',
+      main: '#1976d2', // Sahana Blue (සහන නිල් පාට)
     },
     secondary: {
-      main: '#dc004e',
+      main: '#dc004e', // Accent Red (ලාංඡන රතු පාට)
     },
+  },
+  typography: {
+    fontFamily: '"Roboto", "Noto Sans Sinhala", sans-serif',
   },
 });
 

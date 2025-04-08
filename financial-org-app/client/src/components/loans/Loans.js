@@ -367,21 +367,23 @@ const Loans = () => {
   };
 
   return (
-    <Box>
+    <Box sx={{ py: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" gutterBottom>Loans</Typography>
-        <Button
-          variant="contained"
-          color="primary"
+        <Typography variant="h4" component="h1">
+          Loans Management (ණය කළමනාකරණය)
+        </Typography>
+        <Button 
+          variant="contained" 
+          color="primary" 
           startIcon={<AddIcon />}
           onClick={() => handleOpenDialog('add')}
         >
-          Add Loan
+          Add Loan (ණය එකතු කරන්න)
         </Button>
       </Box>
 
       {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', my: 5 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
           <CircularProgress />
         </Box>
       ) : (
@@ -391,13 +393,13 @@ const Loans = () => {
               <Table stickyHeader>
                 <TableHead>
                   <TableRow>
-                    <TableCell>Member</TableCell>
-                    <TableCell>Amount & Interest</TableCell>
-                    <TableCell>Purpose</TableCell>
-                    <TableCell>Period</TableCell>
-                    <TableCell>Balance</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell align="right">Actions</TableCell>
+                    <TableCell>Member (සාමාජික)</TableCell>
+                    <TableCell>Amount (මුදල)</TableCell>
+                    <TableCell>Date (දිනය)</TableCell>
+                    <TableCell>Interest (පොලිය)</TableCell>
+                    <TableCell>Balance (ශේෂය)</TableCell>
+                    <TableCell>Status (තත්වය)</TableCell>
+                    <TableCell align="right">Actions (ක්‍රියා)</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -412,7 +414,6 @@ const Loans = () => {
                             {loan.interestRate}% {loan.dailyInterest ? '(Daily)' : '(Monthly)'}
                           </Typography>
                         </TableCell>
-                        <TableCell>{loan.purpose}</TableCell>
                         <TableCell>
                           <Typography variant="body2">
                             {new Date(loan.startDate).toLocaleDateString()} - {new Date(loan.endDate).toLocaleDateString()}
@@ -473,21 +474,23 @@ const Loans = () => {
 
       {/* Add/Edit Loan Dialog */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
-        <DialogTitle>{editMode ? 'Edit Loan' : 'Add New Loan'}</DialogTitle>
+        <DialogTitle>
+          {editMode ? 'Edit Loan (ණය සංස්කරණය කරන්න)' : 'Add New Loan (නව ණය එකතු කරන්න)'}
+        </DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} sm={6}>
               <TextField
-                fullWidth
-                label="Member"
-                name="memberId"
                 select
+                name="memberId"
+                label="Member (සාමාජික)"
                 value={formData.memberId}
                 onChange={handleInputChange}
+                fullWidth
+                required
                 error={!!formErrors.memberId}
                 helperText={formErrors.memberId}
               >
-                <MenuItem value="">Select a member</MenuItem>
                 {members.map((member) => (
                   <MenuItem key={member.id} value={member.id}>
                     {member.name}
@@ -495,63 +498,65 @@ const Loans = () => {
                 ))}
               </TextField>
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} sm={6}>
               <TextField
-                fullWidth
-                label="Loan Amount"
                 name="amount"
+                label="Loan Amount (ණය මුදල)"
                 type="number"
                 value={formData.amount}
                 onChange={handleInputChange}
-                error={!!formErrors.amount}
-                helperText={formErrors.amount}
+                fullWidth
+                required
                 InputProps={{
                   startAdornment: <InputAdornment position="start">Rs.</InputAdornment>,
+                  inputProps: { min: 0 }
                 }}
+                error={!!formErrors.amount}
+                helperText={formErrors.amount}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} sm={6}>
               <TextField
-                fullWidth
-                label="Start Date"
                 name="startDate"
+                label="Start Date (ආරම්භක දිනය)"
                 type="date"
                 value={formData.startDate}
                 onChange={handleInputChange}
+                fullWidth
+                required
                 InputLabelProps={{ shrink: true }}
                 error={!!formErrors.startDate}
                 helperText={formErrors.startDate}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} sm={6}>
               <TextField
-                fullWidth
-                label="End Date"
                 name="endDate"
+                label="End Date (අවසන් දිනය)"
                 type="date"
                 value={formData.endDate}
                 onChange={handleInputChange}
+                fullWidth
                 InputLabelProps={{ shrink: true }}
-                error={!!formErrors.endDate}
-                helperText={formErrors.endDate}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} sm={6}>
               <TextField
-                fullWidth
-                label="Interest Rate (%)"
                 name="interestRate"
+                label="Interest Rate % (පොලී අනුපාතය %)"
                 type="number"
                 value={formData.interestRate}
                 onChange={handleInputChange}
+                fullWidth
+                InputProps={{ 
+                  endAdornment: <InputAdornment position="end">%</InputAdornment>,
+                  inputProps: { min: 0, step: 0.5 }
+                }}
                 error={!!formErrors.interestRate}
                 helperText={formErrors.interestRate}
-                InputProps={{
-                  endAdornment: <InputAdornment position="end">%</InputAdornment>,
-                }}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} sm={6}>
               <FormControlLabel
                 control={
                   <Switch
@@ -561,111 +566,107 @@ const Loans = () => {
                     color="primary"
                   />
                 }
-                label="Daily Interest Calculation"
+                label="Calculate Daily Interest (දෛනික පොලිය ගණනය කරන්න)"
               />
             </Grid>
             <Grid item xs={12}>
               <TextField
-                fullWidth
-                label="Purpose"
                 name="purpose"
+                label="Purpose (අරමුණ)"
                 value={formData.purpose}
                 onChange={handleInputChange}
+                fullWidth
+                multiline
+                rows={2}
               />
             </Grid>
-            {editMode && (
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="Status"
-                  name="status"
-                  select
-                  value={formData.status}
-                  onChange={handleInputChange}
-                >
-                  <MenuItem value="active">Active</MenuItem>
-                  <MenuItem value="completed">Completed</MenuItem>
-                  <MenuItem value="defaulted">Defaulted</MenuItem>
-                </TextField>
-              </Grid>
-            )}
+            <Grid item xs={12}>
+              <TextField
+                select
+                name="status"
+                label="Status (තත්වය)"
+                value={formData.status}
+                onChange={handleInputChange}
+                fullWidth
+              >
+                <MenuItem value="active">Active (ක්‍රියාකාරී)</MenuItem>
+                <MenuItem value="completed">Completed (සම්පූර්ණයි)</MenuItem>
+                <MenuItem value="defaulted">Defaulted (පැහැර හැර ඇත)</MenuItem>
+              </TextField>
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button 
-            onClick={handleSubmit} 
-            variant="contained" 
-            color="primary"
-          >
-            {editMode ? 'Update' : 'Add'}
+          <Button onClick={handleCloseDialog} color="primary">
+            Cancel (අවලංගු කරන්න)
+          </Button>
+          <Button onClick={handleSubmit} color="primary" variant="contained">
+            {editMode ? 'Update (යාවත්කාලීන කරන්න)' : 'Add (එකතු කරන්න)'}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Add Payment Dialog */}
-      <Dialog open={openPaymentDialog} onClose={handleClosePaymentDialog}>
-        <DialogTitle>Record Payment</DialogTitle>
+      <Dialog open={openPaymentDialog} onClose={handleClosePaymentDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          Add Payment (ගෙවීම් එකතු කරන්න)
+        </DialogTitle>
         <DialogContent>
-          <Box sx={{ my: 2 }}>
-            <Typography variant="body1" gutterBottom>
-              Member: <strong>{currentLoan?.memberName}</strong>
-            </Typography>
-            <Typography variant="body1" gutterBottom>
-              Loan Amount: <strong>{currentLoan ? formatCurrency(currentLoan.amount) : ''}</strong>
-            </Typography>
-            <Typography variant="body1" gutterBottom>
-              Outstanding Balance: <strong>{currentLoan ? formatCurrency(currentLoan.balance) : ''}</strong>
-            </Typography>
-          </Box>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
+              <Typography variant="body1">
+                Loan for: (ණය ලබාගත්තේ:) {currentLoan ? members.find(m => m.id === currentLoan.memberId)?.name : ''}
+              </Typography>
+              <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
+                Balance: (ශේෂය:) {currentLoan ? formatCurrency(calculateBalance(currentLoan)) : ''}
+              </Typography>
+            </Grid>
+            <Grid item xs={12}>
               <TextField
-                fullWidth
-                label="Payment Amount"
                 name="amount"
+                label="Payment Amount (ගෙවීම් මුදල)"
                 type="number"
                 value={paymentData.amount}
                 onChange={handlePaymentInputChange}
-                error={!!formErrors.amount}
-                helperText={formErrors.amount}
+                fullWidth
+                required
                 InputProps={{
                   startAdornment: <InputAdornment position="start">Rs.</InputAdornment>,
+                  inputProps: { min: 0 }
                 }}
               />
             </Grid>
             <Grid item xs={12}>
               <TextField
-                fullWidth
-                label="Payment Date"
                 name="date"
+                label="Payment Date (ගෙවීම් දිනය)"
                 type="date"
                 value={paymentData.date}
                 onChange={handlePaymentInputChange}
+                fullWidth
+                required
                 InputLabelProps={{ shrink: true }}
-                error={!!formErrors.date}
-                helperText={formErrors.date}
               />
             </Grid>
             <Grid item xs={12}>
               <TextField
-                fullWidth
-                label="Note"
                 name="note"
+                label="Note (සටහන)"
                 value={paymentData.note}
                 onChange={handlePaymentInputChange}
+                fullWidth
+                multiline
+                rows={2}
               />
             </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleClosePaymentDialog}>Cancel</Button>
-          <Button 
-            onClick={handleAddPayment} 
-            variant="contained" 
-            color="primary"
-          >
-            Record Payment
+          <Button onClick={handleClosePaymentDialog} color="primary">
+            Cancel (අවලංගු කරන්න)
+          </Button>
+          <Button onClick={handleAddPayment} color="primary" variant="contained">
+            Add Payment (ගෙවීම එකතු කරන්න)
           </Button>
         </DialogActions>
       </Dialog>
