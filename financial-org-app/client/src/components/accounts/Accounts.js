@@ -26,6 +26,7 @@ import {
   Edit as EditIcon,
   ReceiptLong as ReceiptIcon
 } from '@mui/icons-material';
+import api from '../../services/api';
 
 const Accounts = () => {
   const [loading, setLoading] = useState(true);
@@ -40,90 +41,15 @@ const Accounts = () => {
   const fetchBankData = async () => {
     setLoading(true);
     try {
-      // Mock data - in production this would come from API
-      setTimeout(() => {
-        const mockAccounts = [
-          { 
-            id: 1, 
-            bankName: 'Bank of Ceylon', 
-            accountNumber: '123456789', 
-            accountType: 'Savings',
-            branch: 'Colombo Main',
-            balance: 875000,
-            lastUpdated: '2023-07-15'
-          },
-          { 
-            id: 2, 
-            bankName: 'People\'s Bank', 
-            accountNumber: '987654321', 
-            accountType: 'Fixed Deposit',
-            branch: 'Kandy',
-            balance: 500000,
-            lastUpdated: '2023-07-10'
-          },
-          { 
-            id: 3, 
-            bankName: 'Commercial Bank', 
-            accountNumber: '456789123', 
-            accountType: 'Current',
-            branch: 'Galle',
-            balance: 300000,
-            lastUpdated: '2023-07-12'
-          }
-        ];
-        
-        const mockTransactions = [
-          { 
-            id: 1, 
-            accountId: 1,
-            date: '2023-07-01', 
-            description: 'Deposit from cash book', 
-            amount: 150000, 
-            type: 'credit',
-            reference: 'DEP-001'
-          },
-          { 
-            id: 2, 
-            accountId: 1,
-            date: '2023-07-05', 
-            description: 'Withdrawal for office supplies', 
-            amount: 25000, 
-            type: 'debit',
-            reference: 'WID-001'
-          },
-          { 
-            id: 3, 
-            accountId: 2,
-            date: '2023-07-03', 
-            description: 'Interest earned', 
-            amount: 50000, 
-            type: 'credit',
-            reference: 'INT-001'
-          },
-          { 
-            id: 4, 
-            accountId: 3,
-            date: '2023-07-06', 
-            description: 'Loan disbursement to member', 
-            amount: 100000, 
-            type: 'debit',
-            reference: 'LN-102'
-          },
-          { 
-            id: 5, 
-            accountId: 1,
-            date: '2023-07-10', 
-            description: 'Loan repayment from member', 
-            amount: 55000, 
-            type: 'credit',
-            reference: 'REP-023'
-          }
-        ];
-        
-        setBankAccounts(mockAccounts);
-        setTransactions(mockTransactions);
-        setLoading(false);
-      }, 1000);
+      // Fetch real data from the API
+      const accounts = await api.getBankAccounts();
+      setBankAccounts(accounts);
+      
+      // Fetch all transactions for all accounts
+      const allTransactions = await api.getBankTransactions();
+      setTransactions(allTransactions);
+      
+      setLoading(false);
     } catch (error) {
       console.error("Error fetching bank data:", error);
       setLoading(false);

@@ -17,6 +17,7 @@ import {
   Divider
 } from '@mui/material';
 import { SavingsOutlined, CalculateOutlined } from '@mui/icons-material';
+import api from '../../services/api';
 
 const Dividends = () => {
   const [loading, setLoading] = useState(true);
@@ -35,21 +36,31 @@ const Dividends = () => {
   const fetchDividendData = async () => {
     setLoading(true);
     try {
-      // Mock data - in production this would come from API
-      setTimeout(() => {
+      // Fetch real data from API
+      const dividends = await api.getDividends();
+      
+      if (dividends && dividends.length > 0) {
+        // Calculate total values from the fetched dividends
+        const totalDividends = dividends.reduce((sum, div) => sum + (div.profitAmount || 0), 0);
+        const latestDividend = dividends[0]; // Assuming they're ordered by date DESC
+        
         setDividendData({
-          totalShares: 270,
-          totalDividends: 135000,
-          quarterlyProfit: 450000,
-          dividendRate: 8.5,
-          dividendEntries: [
-            { id: 1, date: '2023-03-31', description: 'Q1 2023 Dividend', totalAmount: 45000, shareAmount: 270, perShareAmount: 166.67 },
-            { id: 2, date: '2023-06-30', description: 'Q2 2023 Dividend', totalAmount: 50000, shareAmount: 270, perShareAmount: 185.19 },
-            { id: 3, date: '2023-09-30', description: 'Q3 2023 Dividend', totalAmount: 40000, shareAmount: 270, perShareAmount: 148.15 }
-          ]
+          totalShares: latestDividend.totalShares || 0,
+          totalDividends: totalDividends,
+          quarterlyProfit: latestDividend.profitAmount || 0,
+          dividendRate: latestDividend.dividendRate || 0,
+          dividendEntries: dividends.map(div => ({
+            id: div.id,
+            date: div.quarterEndDate,
+            description: `Q${Math.ceil(new Date(div.quarterEndDate).getMonth() / 3)} ${new Date(div.quarterEndDate).getFullYear()} Dividend`,
+            totalAmount: div.profitAmount,
+            shareAmount: div.totalShares,
+            perShareAmount: div.totalShares > 0 ? div.profitAmount / div.totalShares : 0
+          }))
         });
-        setLoading(false);
-      }, 1000);
+      }
+      
+      setLoading(false);
     } catch (error) {
       console.error("Error fetching dividend data:", error);
       setLoading(false);

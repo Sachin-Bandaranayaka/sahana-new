@@ -25,6 +25,7 @@ function createDatabase() {
     } else {
       console.log('Connected to SQLite database');
       createTables();
+      migrateTables();
     }
   });
 }
@@ -70,7 +71,9 @@ function createTables() {
       category TEXT NOT NULL,
       amount REAL NOT NULL,
       description TEXT,
-      reference TEXT
+      reference TEXT,
+      memberId INTEGER,
+      FOREIGN KEY(memberId) REFERENCES members(id)
     )`,
     `CREATE TABLE IF NOT EXISTS bank_accounts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -181,6 +184,37 @@ function createTables() {
             console.log('Default settings created');
           }
         });
+      }
+    });
+  });
+}
+
+function migrateTables() {
+  // Check if the cashbook table has a memberId column, if not add it
+  db.get("PRAGMA table_info(cashbook)", (err, rows) => {
+    if (err) {
+      console.error('Error checking cashbook table schema:', err);
+      return;
+    }
+    
+    // Check if the memberId column exists
+    db.get("SELECT 1 FROM pragma_table_info('cashbook') WHERE name='memberId'", (err, row) => {
+      if (err) {
+        console.error('Error checking for memberId column:', err);
+        return;
+      }
+      
+      if (!row) {
+        console.log('Adding memberId column to cashbook table...');
+        db.run("ALTER TABLE cashbook ADD COLUMN memberId INTEGER REFERENCES members(id)", (err) => {
+          if (err) {
+            console.error('Error adding memberId column:', err);
+          } else {
+            console.log('Successfully added memberId column to cashbook table');
+          }
+        });
+      } else {
+        console.log('memberId column already exists in cashbook table');
       }
     });
   });
@@ -389,77 +423,332 @@ ipcMain.handle('get-dashboard-data', async () => {
         });
       });
       
-      // Mock data for charts since they require more complex queries
-      const recentTransactions = [
-        { month: 'Jan', income: 50000, expense: 30000 },
-        { month: 'Feb', income: 60000, expense: 35000 },
-        { month: 'Mar', income: 45000, expense: 25000 },
-        { month: 'Apr', income: 70000, expense: 40000 },
-        { month: 'May', income: 65000, expense: 38000 },
-        { month: 'Jun', income: 80000, expense: 45000 }
-      ];
-      
-      const assetDistribution = [
-        { name: 'Cash In Hand', value: 375000 },
-        { name: 'Bank Deposits', value: 980000 },
-        { name: 'Outstanding Loans', value: 1450000 }
-      ];
+      // Real data for monthly transactions chart
+      const monthlyTransactionsPromise = new Promise((resolve, reject) => {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const currentYear = new Date().getFullYear();
+        
+        // Get transactions by month for current year
+        db.all(`
+          SELECT 
+            strftime('%m', date) as month,
+            SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
+            SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense
+          FROM cashbook
+          WHERE date BETWEEN '${currentYear}-01-01' AND '${currentYear}-12-31'
+          GROUP BY strftime('%m', date)
+          ORDER BY month
+        `, (err, rows) => {
+          if (err) reject(err);
+          else {
+            // Format the data for the chart
+            const chartData = months.map((month, index) => {
+              const monthNum = (index + 1).toString().padStart(2, '0');
+              const monthData = rows.find(r => r.month === monthNum);
+              
+              return {
+                month,
+                income: monthData?.income || 0,
+                expense: monthData?.expense || 0
+              };
+            });
+            
+            resolve(chartData);
+          }
+        });
+      });
       
       // Wait for all queries to complete
-      const [totalMembers, loans, cashbook, bankBalance] = await Promise.all([
+      const [totalMembers, loans, cashbook, bankBalance, recentTransactions] = await Promise.all([
         memberCountPromise,
         loansPromise,
         cashbookPromise,
-        bankBalancePromise
+        bankBalancePromise,
+        monthlyTransactionsPromise
       ]);
+      
+      // Calculate asset distribution from real data
+      const assetDistribution = [
+        { name: 'Cash In Hand', value: cashbook?.balance || 0 },
+        { name: 'Bank Deposits', value: bankBalance || 0 },
+        { name: 'Outstanding Loans', value: loans?.amount || 0 }
+      ];
       
       // Always return data in the correct format that matches the React component expectations
       resolve({
-        totalMembers: totalMembers || 32,
+        totalMembers,
         cashBook: {
-          totalContributions: cashbook?.totalContributions || 875000,
+          totalContributions: cashbook?.totalContributions || 0,
         },
         loans: {
-          active: loans?.active || 12,
-          amount: loans?.amount || 1450000,
+          active: loans?.active || 0,
+          amount: loans?.amount || 0,
         },
-        bankBalance: bankBalance || 980000,
+        bankBalance: bankBalance || 0,
         recentTransactions,
         assetDistribution
       });
       
     } catch (error) {
       console.error('Error getting dashboard data:', error);
-      // On error, return mock data to ensure the UI shows something
+      // Return empty data on error
       resolve({
-        totalMembers: 32,
+        totalMembers: 0,
         cashBook: {
-          totalContributions: 875000,
+          totalContributions: 0,
         },
         loans: {
-          active: 12,
-          amount: 1450000,
+          active: 0,
+          amount: 0,
         },
-        bankBalance: 980000,
-        recentTransactions: [
-          { month: 'Jan', income: 50000, expense: 30000 },
-          { month: 'Feb', income: 60000, expense: 35000 },
-          { month: 'Mar', income: 45000, expense: 25000 },
-          { month: 'Apr', income: 70000, expense: 40000 },
-          { month: 'May', income: 65000, expense: 38000 },
-          { month: 'Jun', income: 80000, expense: 45000 }
-        ],
-        assetDistribution: [
-          { name: 'Cash In Hand', value: 875000 },
-          { name: 'Bank Deposits', value: 980000 },
-          { name: 'Outstanding Loans', value: 1450000 }
-        ]
+        bankBalance: 0,
+        recentTransactions: [],
+        assetDistribution: []
       });
     }
   });
 });
 
-// Add more API handlers for each table/operation
+// CASH BOOK API
+ipcMain.handle('get-cash-entries', async (event, dateRange) => {
+  return new Promise((resolve, reject) => {
+    let query = `
+      SELECT c.*, m.name as memberName 
+      FROM cashbook c
+      LEFT JOIN members m ON c.memberId = m.id
+    `;
+    
+    if (dateRange && dateRange.startDate && dateRange.endDate) {
+      query += ` WHERE c.date >= ? AND c.date <= ?`;
+      query += ` ORDER BY c.date DESC`;
+      
+      db.all(query, [dateRange.startDate, dateRange.endDate], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    } else {
+      query += ` ORDER BY c.date DESC`;
+      
+      db.all(query, (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    }
+  });
+});
+
+ipcMain.handle('add-cash-entry', async (event, entry) => {
+  return new Promise((resolve, reject) => {
+    const { date, type, category, amount, description, memberId } = entry;
+    db.run(
+      'INSERT INTO cashbook (date, type, category, amount, description, memberId) VALUES (?, ?, ?, ?, ?, ?)',
+      [date, type, category, amount, description, memberId || null],
+      function(err) {
+        if (err) reject(err);
+        else resolve({ id: this.lastID, ...entry });
+      }
+    );
+  });
+});
+
+ipcMain.handle('update-cash-entry', async (event, id, entry) => {
+  return new Promise((resolve, reject) => {
+    const { date, type, category, amount, description, memberId } = entry;
+    db.run(
+      'UPDATE cashbook SET date = ?, type = ?, category = ?, amount = ?, description = ?, memberId = ? WHERE id = ?',
+      [date, type, category, amount, description, memberId || null, id],
+      function(err) {
+        if (err) reject(err);
+        else {
+          if (this.changes === 0) {
+            reject(new Error('Cash entry not found'));
+          } else {
+            resolve({ id, ...entry });
+          }
+        }
+      }
+    );
+  });
+});
+
+ipcMain.handle('delete-cash-entry', async (event, id) => {
+  return new Promise((resolve, reject) => {
+    db.run('DELETE FROM cashbook WHERE id = ?', [id], function(err) {
+      if (err) reject(err);
+      else {
+        if (this.changes === 0) {
+          reject(new Error('Cash entry not found'));
+        } else {
+          resolve({ success: true });
+        }
+      }
+    });
+  });
+});
+
+// BANK ACCOUNTS API
+ipcMain.handle('get-bank-accounts', async () => {
+  return new Promise((resolve, reject) => {
+    db.all('SELECT * FROM bank_accounts ORDER BY bankName', (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows);
+    });
+  });
+});
+
+ipcMain.handle('add-bank-account', async (event, account) => {
+  return new Promise((resolve, reject) => {
+    const { accountNumber, bankName, accountType, balance, openDate } = account;
+    db.run(
+      'INSERT INTO bank_accounts (accountNumber, bankName, accountType, balance, openDate) VALUES (?, ?, ?, ?, ?)',
+      [accountNumber, bankName, accountType, balance, openDate],
+      function(err) {
+        if (err) reject(err);
+        else resolve({ id: this.lastID, ...account });
+      }
+    );
+  });
+});
+
+ipcMain.handle('update-bank-account', async (event, id, account) => {
+  return new Promise((resolve, reject) => {
+    const { accountNumber, bankName, accountType, balance, openDate } = account;
+    db.run(
+      'UPDATE bank_accounts SET accountNumber = ?, bankName = ?, accountType = ?, balance = ?, openDate = ? WHERE id = ?',
+      [accountNumber, bankName, accountType, balance, openDate, id],
+      function(err) {
+        if (err) reject(err);
+        else {
+          if (this.changes === 0) {
+            reject(new Error('Bank account not found'));
+          } else {
+            resolve({ id, ...account });
+          }
+        }
+      }
+    );
+  });
+});
+
+ipcMain.handle('delete-bank-account', async (event, id) => {
+  return new Promise((resolve, reject) => {
+    db.run('DELETE FROM bank_accounts WHERE id = ?', [id], function(err) {
+      if (err) reject(err);
+      else {
+        if (this.changes === 0) {
+          reject(new Error('Bank account not found'));
+        } else {
+          resolve({ success: true });
+        }
+      }
+    });
+  });
+});
+
+// BANK TRANSACTIONS API
+ipcMain.handle('get-bank-transactions', async (event, accountId = null) => {
+  return new Promise((resolve, reject) => {
+    let query = 'SELECT * FROM bank_transactions';
+    let params = [];
+    
+    if (accountId) {
+      query += ' WHERE accountId = ?';
+      params.push(accountId);
+    }
+    
+    query += ' ORDER BY date DESC';
+    
+    db.all(query, params, (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows);
+    });
+  });
+});
+
+ipcMain.handle('add-bank-transaction', async (event, transaction) => {
+  return new Promise((resolve, reject) => {
+    const { accountId, date, description, amount, type } = transaction;
+    
+    db.run(
+      'INSERT INTO bank_transactions (accountId, date, description, amount, type) VALUES (?, ?, ?, ?, ?)',
+      [accountId, date, description, amount, type],
+      function(err) {
+        if (err) reject(err);
+        else {
+          // Update bank account balance
+          const balanceChange = type === 'credit' ? amount : -amount;
+          db.run(
+            'UPDATE bank_accounts SET balance = balance + ? WHERE id = ?',
+            [balanceChange, accountId],
+            function(updateErr) {
+              if (updateErr) reject(updateErr);
+              else resolve({ id: this.lastID, ...transaction });
+            }
+          );
+        }
+      }
+    );
+  });
+});
+
+// DIVIDENDS API
+ipcMain.handle('get-dividends', async () => {
+  return new Promise((resolve, reject) => {
+    db.all('SELECT * FROM dividends ORDER BY date DESC', (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows);
+    });
+  });
+});
+
+ipcMain.handle('add-dividend', async (event, dividend) => {
+  return new Promise((resolve, reject) => {
+    const { quarterEndDate, totalShares, profitAmount, dividendRate, calculationDate } = dividend;
+    db.run(
+      'INSERT INTO dividends (quarterEndDate, totalShares, profitAmount, dividendRate, calculationDate) VALUES (?, ?, ?, ?, ?)',
+      [quarterEndDate, totalShares, profitAmount, dividendRate, calculationDate],
+      function(err) {
+        if (err) reject(err);
+        else {
+          const dividendId = this.lastID;
+          resolve({ id: dividendId, ...dividend });
+        }
+      }
+    );
+  });
+});
+
+ipcMain.handle('get-dividend-payments', async (event, dividendId) => {
+  return new Promise((resolve, reject) => {
+    db.all('SELECT dp.*, m.name as memberName FROM dividend_payments dp JOIN members m ON dp.memberId = m.id WHERE dp.dividendId = ?', 
+      [dividendId], 
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      }
+    );
+  });
+});
+
+ipcMain.handle('update-dividend-payment', async (event, id, payment) => {
+  return new Promise((resolve, reject) => {
+    const { status, paymentDate } = payment;
+    db.run(
+      'UPDATE dividend_payments SET status = ?, paymentDate = ? WHERE id = ?',
+      [status, paymentDate, id],
+      function(err) {
+        if (err) reject(err);
+        else {
+          if (this.changes === 0) {
+            reject(new Error('Dividend payment not found'));
+          } else {
+            resolve({ id, ...payment });
+          }
+        }
+      }
+    );
+  });
+});
 
 // Export functions for testing
 module.exports = { createWindow, createDatabase }; 
