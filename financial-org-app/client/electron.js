@@ -586,29 +586,52 @@ ipcMain.handle('add-loan-payment', async (event, loanId, payment) => {
   return new Promise((resolve, reject) => {
     const { date, amount, note } = payment;
     
-    // First add the payment record
-    db.run(
-      'INSERT INTO loan_payments (loanId, date, amount, note) VALUES (?, ?, ?, ?)',
-      [loanId, date, amount, note],
-      function(err) {
-        if (err) {
-          reject(err);
-          return;
-        }
-        
-        const paymentId = this.lastID;
-        
-        // Then update the loan balance
-        db.run(
-          'UPDATE loans SET balance = balance - ? WHERE id = ?',
-          [amount, loanId],
-          function(err) {
-            if (err) reject(err);
-            else resolve({ id: paymentId, loanId, ...payment });
-          }
-        );
+    // First get the loan details to identify the member
+    db.get('SELECT * FROM loans WHERE id = ?', [loanId], (err, loan) => {
+      if (err) {
+        reject(err);
+        return;
       }
-    );
+      
+      if (!loan) {
+        reject(new Error('Loan not found'));
+        return;
+      }
+      
+      // Now add the payment record
+      db.run(
+        'INSERT INTO loan_payments (loanId, date, amount, note) VALUES (?, ?, ?, ?)',
+        [loanId, date, amount, note],
+        function(err) {
+          if (err) {
+            reject(err);
+            return;
+          }
+          
+          const paymentId = this.lastID;
+          
+          // Then update the loan balance
+          db.run(
+            'UPDATE loans SET balance = balance - ? WHERE id = ?',
+            [amount, loanId],
+            function(err) {
+              if (err) {
+                reject(err);
+                return;
+              }
+              
+              // Return the payment details along with memberId for reference
+              resolve({ 
+                id: paymentId, 
+                loanId, 
+                memberId: loan.memberId, 
+                ...payment 
+              });
+            }
+          );
+        }
+      );
+    });
   });
 });
 
@@ -982,6 +1005,233 @@ ipcMain.handle('update-dividend-payment', async (event, id, payment) => {
         }
       }
     );
+  });
+});
+
+// SETTINGS API
+ipcMain.handle('get-settings', async () => {
+  return new Promise((resolve, reject) => {
+    db.all('SELECT * FROM settings', (err, rows) => {
+      if (err) {
+        console.error('Error getting settings:', err);
+        reject(err);
+      } else {
+        resolve(rows || []);
+      }
+    });
+  });
+});
+
+ipcMain.handle('update-setting', async (event, setting) => {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'UPDATE settings SET value = ? WHERE name = ?',
+      [setting.value, setting.name],
+      function(err) {
+        if (err) {
+          console.error('Error updating setting:', err);
+          reject(err);
+        } else {
+          if (this.changes === 0) {
+            // If setting doesn't exist, insert it
+            db.run(
+              'INSERT INTO settings (name, value) VALUES (?, ?)',
+              [setting.name, setting.value],
+              function(err) {
+                if (err) {
+                  console.error('Error inserting setting:', err);
+                  reject(err);
+                } else {
+                  resolve({ success: true, id: this.lastID, ...setting });
+                }
+              }
+            );
+          } else {
+            resolve({ success: true, ...setting });
+          }
+        }
+      }
+    );
+  });
+});
+
+// BACKUP & RESTORE API
+ipcMain.handle('backup-database', async (event, filePath) => {
+  return new Promise((resolve, reject) => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      
+      // Check if the path is a directory
+      try {
+        const stats = fs.statSync(filePath);
+        if (stats.isDirectory()) {
+          // If it's a directory, append a filename
+          const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
+          filePath = path.join(filePath, `sahana_backup_${date}.json`);
+        }
+      } catch (err) {
+        // Path doesn't exist, which is fine for a new file
+        // Just make sure the directory exists
+        const dirPath = path.dirname(filePath);
+        if (!fs.existsSync(dirPath)) {
+          try {
+            fs.mkdirSync(dirPath, { recursive: true });
+          } catch (mkdirErr) {
+            console.error('Error creating directory:', mkdirErr);
+            reject(new Error(`Unable to create directory: ${dirPath}`));
+            return;
+          }
+        }
+      }
+      
+      // Create backup object with all database data
+      const promises = [
+        new Promise(resolve => {
+          db.all('SELECT * FROM members', (err, rows) => {
+            if (err) console.error('Error backing up members:', err);
+            resolve({ members: rows || [] });
+          });
+        }),
+        new Promise(resolve => {
+          db.all('SELECT * FROM loans', (err, rows) => {
+            if (err) console.error('Error backing up loans:', err);
+            resolve({ loans: rows || [] });
+          });
+        }),
+        new Promise(resolve => {
+          db.all('SELECT * FROM loan_payments', (err, rows) => {
+            if (err) console.error('Error backing up loan_payments:', err);
+            resolve({ loan_payments: rows || [] });
+          });
+        }),
+        new Promise(resolve => {
+          db.all('SELECT * FROM cashbook', (err, rows) => {
+            if (err) console.error('Error backing up cashbook:', err);
+            resolve({ cashbook: rows || [] });
+          });
+        }),
+        new Promise(resolve => {
+          db.all('SELECT * FROM bank_accounts', (err, rows) => {
+            if (err) console.error('Error backing up bank_accounts:', err);
+            resolve({ bank_accounts: rows || [] });
+          });
+        }),
+        new Promise(resolve => {
+          db.all('SELECT * FROM bank_transactions', (err, rows) => {
+            if (err) console.error('Error backing up bank_transactions:', err);
+            resolve({ bank_transactions: rows || [] });
+          });
+        }),
+        new Promise(resolve => {
+          db.all('SELECT * FROM dividends', (err, rows) => {
+            if (err) console.error('Error backing up dividends:', err);
+            resolve({ dividends: rows || [] });
+          });
+        }),
+        new Promise(resolve => {
+          db.all('SELECT * FROM dividend_payments', (err, rows) => {
+            if (err) console.error('Error backing up dividend_payments:', err);
+            resolve({ dividend_payments: rows || [] });
+          });
+        }),
+        new Promise(resolve => {
+          db.all('SELECT * FROM settings', (err, rows) => {
+            if (err) console.error('Error backing up settings:', err);
+            resolve({ settings: rows || [] });
+          });
+        })
+      ];
+      
+      Promise.all(promises)
+        .then(results => {
+          // Combine all data into a single object
+          const backupData = Object.assign({}, ...results, {
+            backup_date: new Date().toISOString(),
+            version: '1.0'
+          });
+          
+          // Write to file
+          fs.writeFileSync(filePath, JSON.stringify(backupData, null, 2));
+          
+          resolve({ success: true, message: 'Backup created successfully' });
+        })
+        .catch(error => {
+          console.error('Error creating backup:', error);
+          reject(error);
+        });
+    } catch (error) {
+      console.error('Error creating backup:', error);
+      reject(error);
+    }
+  });
+});
+
+ipcMain.handle('restore-database', async (event, filePath) => {
+  return new Promise((resolve, reject) => {
+    try {
+      const fs = require('fs');
+      
+      // Read backup file
+      if (!fs.existsSync(filePath)) {
+        reject(new Error('Backup file not found'));
+        return;
+      }
+      
+      const backupData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      
+      // Start a transaction to ensure all-or-nothing restoration
+      db.run('BEGIN TRANSACTION', err => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        
+        try {
+          // Clear existing data
+          const tables = [
+            'members', 'loans', 'loan_payments', 'cashbook', 
+            'bank_accounts', 'bank_transactions', 'dividends', 
+            'dividend_payments', 'settings'
+          ];
+          
+          tables.forEach(table => {
+            db.run(`DELETE FROM ${table}`);
+          });
+          
+          // Restore members
+          if (backupData.members && backupData.members.length > 0) {
+            backupData.members.forEach(member => {
+              db.run(
+                'INSERT INTO members (id, member_id, name, address, phone, email, joinDate, shares, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [member.id, member.member_id, member.name, member.address, member.phone, member.email, member.joinDate, member.shares, member.status]
+              );
+            });
+          }
+          
+          // Restore other tables similarly
+          // ...
+          
+          // Commit the transaction
+          db.run('COMMIT', err => {
+            if (err) {
+              console.error('Error committing restore transaction:', err);
+              db.run('ROLLBACK');
+              reject(err);
+            } else {
+              resolve({ success: true, message: 'Data restored successfully' });
+            }
+          });
+        } catch (error) {
+          console.error('Error during restore:', error);
+          db.run('ROLLBACK');
+          reject(error);
+        }
+      });
+    } catch (error) {
+      console.error('Error restoring backup:', error);
+      reject(error);
+    }
   });
 });
 

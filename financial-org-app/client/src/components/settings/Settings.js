@@ -162,12 +162,26 @@ const Settings = () => {
     
     try {
       setIsProcessing(true);
-      const result = await api.backupData(backupPath);
+      
+      // Check if the path ends with a file extension
+      // If not, assume it's a directory and append a filename
+      let finalPath = backupPath;
+      if (!finalPath.endsWith('.json')) {
+        // Check if there's a trailing slash
+        if (!finalPath.endsWith('/') && !finalPath.endsWith('\\')) {
+          finalPath += '/';
+        }
+        // Add a default filename with date
+        const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
+        finalPath += `sahana_backup_${date}.json`;
+      }
+      
+      const result = await api.backupData(finalPath);
       
       if (result.success) {
         setSnackbar({
           open: true,
-          message: result.message || 'Backup created successfully',
+          message: `Backup created successfully at: ${finalPath}`,
           severity: 'success'
         });
       } else {
@@ -450,8 +464,9 @@ const Settings = () => {
                       value={backupPath}
                       onChange={(e) => setBackupPath(e.target.value)}
                       margin="normal"
-                      helperText="Specify the full path including filename (e.g., C:/Backups/sahana_backup.json)"
+                      helperText="Enter a folder path to create a date-stamped backup file, or a complete path ending with .json"
                       disabled={isProcessing}
+                      placeholder="C:/Users/YourName/Documents/Backups"
                     />
                   </CardContent>
                   <CardActions>
