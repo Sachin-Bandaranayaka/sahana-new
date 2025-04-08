@@ -775,7 +775,7 @@ ipcMain.handle('add-bank-transaction', async (event, transaction) => {
 // DIVIDENDS API
 ipcMain.handle('get-dividends', async () => {
   return new Promise((resolve, reject) => {
-    db.all('SELECT * FROM dividends ORDER BY date DESC', (err, rows) => {
+    db.all('SELECT * FROM dividends ORDER BY quarterEndDate DESC', (err, rows) => {
       if (err) reject(err);
       else resolve(rows);
     });

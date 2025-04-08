@@ -18,7 +18,16 @@ import {
   Tabs,
   Tab,
   IconButton,
-  Chip
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  TextField,
+  MenuItem,
+  Snackbar,
+  Alert,
+  InputAdornment
 } from '@mui/material';
 import {
   AccountBalance as AccountIcon,
@@ -33,6 +42,23 @@ const Accounts = () => {
   const [tabValue, setTabValue] = useState(0);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [formData, setFormData] = useState({
+    bankName: '',
+    accountNumber: '',
+    accountType: 'Savings',
+    branch: '',
+    balance: '',
+    openDate: new Date().toISOString().split('T')[0]
+  });
+  const [formErrors, setFormErrors] = useState({});
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success'
+  });
+
+  const accountTypes = ['Savings', 'Current', 'Fixed Deposit', 'Loan', 'Other'];
 
   useEffect(() => {
     fetchBankData();
@@ -53,6 +79,11 @@ const Accounts = () => {
     } catch (error) {
       console.error("Error fetching bank data:", error);
       setLoading(false);
+      setSnackbar({
+        open: true,
+        message: 'Failed to load bank account data',
+        severity: 'error'
+      });
     }
   };
 
@@ -61,7 +92,96 @@ const Accounts = () => {
   };
 
   const formatCurrency = (amount) => {
-    return `Rs. ${amount.toLocaleString()}`;
+    return `Rs. ${Number(amount).toLocaleString()}`;
+  };
+
+  const handleOpenDialog = () => {
+    setFormErrors({});
+    setFormData({
+      bankName: '',
+      accountNumber: '',
+      accountType: 'Savings',
+      branch: '',
+      balance: '',
+      openDate: new Date().toISOString().split('T')[0]
+    });
+    setOpenDialog(true);
+  };
+
+  const handleCloseDialog = () => {
+    setOpenDialog(false);
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData({
+      ...formData,
+      [name]: value
+    });
+    
+    // Clear validation error when field is edited
+    if (formErrors[name]) {
+      setFormErrors({
+        ...formErrors,
+        [name]: undefined
+      });
+    }
+  };
+
+  const validateForm = () => {
+    const errors = {};
+    
+    if (!formData.bankName) errors.bankName = 'Bank name is required';
+    if (!formData.accountNumber) errors.accountNumber = 'Account number is required';
+    if (!formData.accountType) errors.accountType = 'Account type is required';
+    if (!formData.balance || isNaN(formData.balance) || Number(formData.balance) < 0) {
+      errors.balance = 'Please enter a valid amount';
+    }
+    if (!formData.openDate) errors.openDate = 'Opening date is required';
+    
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleSubmit = async () => {
+    if (!validateForm()) return;
+    
+    try {
+      const newAccount = {
+        bankName: formData.bankName,
+        accountNumber: formData.accountNumber,
+        accountType: formData.accountType,
+        branch: formData.branch || '',
+        balance: parseFloat(formData.balance),
+        openDate: formData.openDate
+      };
+      
+      await api.addBankAccount(newAccount);
+      
+      setSnackbar({
+        open: true,
+        message: 'Bank account added successfully',
+        severity: 'success'
+      });
+      
+      // Refresh bank accounts after adding
+      fetchBankData();
+      handleCloseDialog();
+    } catch (error) {
+      console.error("Error saving bank account:", error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to save bank account',
+        severity: 'error'
+      });
+    }
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({
+      ...snackbar,
+      open: false
+    });
   };
 
   // Calculate total balance across all accounts
@@ -146,7 +266,7 @@ const Accounts = () => {
                     <Button 
                       variant="contained" 
                       startIcon={<AddIcon />}
-                      onClick={() => alert('Add Account feature would open here')}
+                      onClick={handleOpenDialog}
                     >
                       Add Account
                     </Button>
@@ -180,7 +300,7 @@ const Accounts = () => {
                             </TableCell>
                             <TableCell>{account.branch}</TableCell>
                             <TableCell>{formatCurrency(account.balance)}</TableCell>
-                            <TableCell>{new Date(account.lastUpdated).toLocaleDateString()}</TableCell>
+                            <TableCell>{account.openDate ? new Date(account.openDate).toLocaleDateString() : 'N/A'}</TableCell>
                             <TableCell>
                               <IconButton 
                                 color="primary" 
@@ -261,6 +381,123 @@ const Accounts = () => {
           </Paper>
         </>
       )}
+      
+      {/* Add Bank Account Dialog */}
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Add New Bank Account</DialogTitle>
+        <DialogContent>
+          <Box component="form" sx={{ mt: 1 }}>
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="bankName"
+              label="Bank Name"
+              name="bankName"
+              value={formData.bankName}
+              onChange={handleInputChange}
+              error={!!formErrors.bankName}
+              helperText={formErrors.bankName}
+            />
+            
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="accountNumber"
+              label="Account Number"
+              name="accountNumber"
+              value={formData.accountNumber}
+              onChange={handleInputChange}
+              error={!!formErrors.accountNumber}
+              helperText={formErrors.accountNumber}
+            />
+            
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              select
+              id="accountType"
+              label="Account Type"
+              name="accountType"
+              value={formData.accountType}
+              onChange={handleInputChange}
+              error={!!formErrors.accountType}
+              helperText={formErrors.accountType}
+            >
+              {accountTypes.map((option) => (
+                <MenuItem key={option} value={option}>
+                  {option}
+                </MenuItem>
+              ))}
+            </TextField>
+            
+            <TextField
+              margin="normal"
+              fullWidth
+              id="branch"
+              label="Branch"
+              name="branch"
+              value={formData.branch}
+              onChange={handleInputChange}
+            />
+            
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="balance"
+              label="Opening Balance"
+              name="balance"
+              type="number"
+              value={formData.balance}
+              onChange={handleInputChange}
+              error={!!formErrors.balance}
+              helperText={formErrors.balance}
+              InputProps={{
+                startAdornment: <InputAdornment position="start">Rs.</InputAdornment>,
+              }}
+            />
+            
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="openDate"
+              label="Opening Date"
+              name="openDate"
+              type="date"
+              value={formData.openDate}
+              onChange={handleInputChange}
+              error={!!formErrors.openDate}
+              helperText={formErrors.openDate}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog}>Cancel</Button>
+          <Button 
+            onClick={handleSubmit} 
+            variant="contained"
+          >
+            Add Account
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Snackbar for notifications */}
+      <Snackbar 
+        open={snackbar.open} 
+        autoHideDuration={6000} 
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
