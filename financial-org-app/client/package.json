@@ -2,7 +2,7 @@
   "name": "sahana-welfare",
   "version": "0.1.0",
   "private": true,
-  "main": "electron.js",
+  "main": "build/electron.js",
   "description": "Financial management application for Sahana Welfare Organization",
   "author": "Sahana Welfare",
   "dependencies": {
@@ -19,6 +19,7 @@
     "react-router-dom": "^6.30.0",
     "react-scripts": "5.0.1",
     "recharts": "^2.15.2",
+    "sqlite3": "^5.1.7",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
@@ -29,7 +30,8 @@
     "electron-dev": "concurrently \"cross-env BROWSER=none npm start\" \"wait-on http://localhost:3000 && electron .\"",
     "electron": "node start-electron.js",
     "electron-build": "npm run build && electron-builder",
-    "package": "electron-builder build --win --publish never",
+    "package": "npm run build && npm run copy-electron && electron-builder build --win --publish never",
+    "copy-electron": "copyfiles -f electron.js preload.js build/",
     "dist": "electron-builder",
     "postinstall": "electron-builder install-app-deps"
   },
@@ -55,29 +57,33 @@
   "homepage": "./",
   "devDependencies": {
     "concurrently": "^8.2.2",
+    "copyfiles": "^2.4.1",
     "cross-env": "^7.0.3",
     "electron": "^35.1.4",
     "electron-builder": "^26.0.12",
-    "sqlite3": "^5.1.7",
     "wait-on": "^7.2.0"
   },
   "build": {
     "appId": "com.sahanawelfare.app",
     "productName": "Sahana Welfare",
     "files": [
-      "build/**/*",
-      "electron.js",
-      "preload.js",
-      "node_modules/**/*"
+      "build/**/*"
+    ],
+    "extraMetadata": {
+      "main": "build/electron.js"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/sqlite3/lib/binding/**/*"
     ],
     "directories": {
-      "buildResources": "assets"
+      "buildResources": "assets",
+      "output": "dist"
     },
     "win": {
       "target": [
         "nsis"
-      ],
-      "icon": "build/favicon.ico"
+      ]
     },
     "nsis": {
       "oneClick": false,

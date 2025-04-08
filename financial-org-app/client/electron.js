@@ -1,8 +1,10 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
 const isDev = process.env.NODE_ENV === 'development';
 const fs = require('fs');
+
+// Simply require sqlite3
+const sqlite3 = require('sqlite3').verbose();
 
 // Make sure the data directory exists
 const userDataPath = app.getPath('userData');
@@ -249,12 +251,13 @@ function createWindow() {
     });
   });
   
-  // Load the app
-  const startUrl = isDev && process.env.USE_DEV_SERVER === 'true'
+  // Load the app - Fix for production path issues
+  const startUrl = isDev 
     ? 'http://localhost:3000' 
-    : `file://${path.join(__dirname, './build/index.html')}`;
+    : `file://${path.join(__dirname, './index.html')}`;
   
   console.log(`Loading application from: ${startUrl}`);
+  console.log('Current directory:', __dirname);
   
   // Delay loading to ensure all startup processes are complete
   setTimeout(() => {
@@ -264,12 +267,38 @@ function createWindow() {
       })
       .catch(err => {
         console.error('Error loading URL:', err);
-        // Try loading with a different path if the first one fails
-        const fallbackUrl = `file://${path.join(__dirname, 'build', 'index.html')}`;
-        console.log(`Trying fallback URL: ${fallbackUrl}`);
-        mainWindow.loadURL(fallbackUrl);
+        // Try multiple fallback paths
+        const fallbackUrls = [
+          `file://${path.join(__dirname, 'index.html')}`,
+          `file://${path.join(__dirname, '../index.html')}`,
+          `file://${path.join(app.getAppPath(), 'build/index.html')}`,
+          `file://${path.join(app.getAppPath(), 'index.html')}`
+        ];
+        
+        console.log('Trying fallback URLs:', fallbackUrls);
+        
+        // Try each fallback URL until one works
+        tryLoadFallbacks(fallbackUrls, 0);
       });
   }, 500);
+
+  // Function to try multiple fallback URLs
+  function tryLoadFallbacks(urls, index) {
+    if (index >= urls.length) {
+      console.error('All fallback URLs failed');
+      return;
+    }
+    
+    console.log(`Trying fallback URL ${index + 1}:`, urls[index]);
+    mainWindow.loadURL(urls[index])
+      .then(() => {
+        console.log('Fallback URL loaded successfully:', urls[index]);
+      })
+      .catch(err => {
+        console.error(`Error loading fallback URL ${index + 1}:`, err);
+        tryLoadFallbacks(urls, index + 1);
+      });
+  }
 
   // Open DevTools if in development
   if (isDev) {
