@@ -377,6 +377,87 @@ ipcMain.handle('get-loans', async () => {
   });
 });
 
+ipcMain.handle('add-loan', async (event, loan) => {
+  return new Promise((resolve, reject) => {
+    const { memberId, amount, interestRate, startDate, endDate, purpose, dailyInterest, status, balance } = loan;
+    db.run(
+      'INSERT INTO loans (memberId, amount, interestRate, startDate, endDate, purpose, dailyInterest, status, balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [memberId, amount, interestRate, startDate, endDate, purpose, dailyInterest ? 1 : 0, status || 'active', balance || amount],
+      function(err) {
+        if (err) reject(err);
+        else resolve({ id: this.lastID, ...loan });
+      }
+    );
+  });
+});
+
+ipcMain.handle('update-loan', async (event, id, loan) => {
+  return new Promise((resolve, reject) => {
+    const { memberId, amount, interestRate, startDate, endDate, purpose, dailyInterest, status, balance } = loan;
+    db.run(
+      'UPDATE loans SET memberId = ?, amount = ?, interestRate = ?, startDate = ?, endDate = ?, purpose = ?, dailyInterest = ?, status = ?, balance = ? WHERE id = ?',
+      [memberId, amount, interestRate, startDate, endDate, purpose, dailyInterest ? 1 : 0, status, balance, id],
+      function(err) {
+        if (err) reject(err);
+        else {
+          if (this.changes === 0) {
+            reject(new Error('Loan not found'));
+          } else {
+            resolve({ id, ...loan });
+          }
+        }
+      }
+    );
+  });
+});
+
+ipcMain.handle('delete-loan', async (event, id) => {
+  return new Promise((resolve, reject) => {
+    db.run('DELETE FROM loans WHERE id = ?', [id], function(err) {
+      if (err) reject(err);
+      else {
+        if (this.changes === 0) {
+          reject(new Error('Loan not found'));
+        } else {
+          // Also delete associated loan payments
+          db.run('DELETE FROM loan_payments WHERE loanId = ?', [id]);
+          resolve({ success: true });
+        }
+      }
+    });
+  });
+});
+
+ipcMain.handle('add-loan-payment', async (event, loanId, payment) => {
+  return new Promise((resolve, reject) => {
+    const { date, amount, note } = payment;
+    
+    // First add the payment record
+    db.run(
+      'INSERT INTO loan_payments (loanId, date, amount, note) VALUES (?, ?, ?, ?)',
+      [loanId, date, amount, note],
+      function(err) {
+        if (err) {
+          reject(err);
+          return;
+        }
+        
+        const paymentId = this.lastID;
+        
+        // Then update the loan balance
+        db.run(
+          'UPDATE loans SET balance = balance - ? WHERE id = ?',
+          [amount, loanId],
+          function(err) {
+            if (err) reject(err);
+            else resolve({ id: paymentId, loanId, ...payment });
+          }
+        );
+      }
+    );
+  });
+});
+
 // DASHBOARD API
 ipcMain.handle('get-dashboard-data', async () => {
   return new Promise(async (resolve, reject) => {
