@@ -43,6 +43,7 @@ const Accounts = () => {
   const [bankAccounts, setBankAccounts] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
+  const [openTransactionDialog, setOpenTransactionDialog] = useState(false);
   const [formData, setFormData] = useState({
     bankName: '',
     accountNumber: '',
@@ -51,7 +52,16 @@ const Accounts = () => {
     balance: '',
     openDate: new Date().toISOString().split('T')[0]
   });
+  const [transactionData, setTransactionData] = useState({
+    accountId: '',
+    date: new Date().toISOString().split('T')[0],
+    description: '',
+    amount: '',
+    type: 'credit',
+    reference: '',
+  });
   const [formErrors, setFormErrors] = useState({});
+  const [transactionErrors, setTransactionErrors] = useState({});
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: '',
@@ -59,6 +69,10 @@ const Accounts = () => {
   });
 
   const accountTypes = ['Savings', 'Current', 'Fixed Deposit', 'Loan', 'Other'];
+  const transactionTypes = [
+    { value: 'credit', label: 'Credit (Deposit)' },
+    { value: 'debit', label: 'Debit (Withdrawal)' }
+  ];
 
   useEffect(() => {
     fetchBankData();
@@ -197,6 +211,87 @@ const Accounts = () => {
     return groups;
   }, {});
 
+  const handleOpenTransactionDialog = (accountId = '') => {
+    setTransactionErrors({});
+    setTransactionData({
+      accountId: accountId,
+      date: new Date().toISOString().split('T')[0],
+      description: '',
+      amount: '',
+      type: 'credit',
+      reference: '',
+    });
+    setOpenTransactionDialog(true);
+  };
+
+  const handleCloseTransactionDialog = () => {
+    setOpenTransactionDialog(false);
+  };
+
+  const handleTransactionInputChange = (e) => {
+    const { name, value } = e.target;
+    setTransactionData({
+      ...transactionData,
+      [name]: value
+    });
+    
+    // Clear validation error when field is edited
+    if (transactionErrors[name]) {
+      setTransactionErrors({
+        ...transactionErrors,
+        [name]: undefined
+      });
+    }
+  };
+
+  const validateTransactionForm = () => {
+    const errors = {};
+    
+    if (!transactionData.accountId) errors.accountId = 'Please select an account';
+    if (!transactionData.date) errors.date = 'Date is required';
+    if (!transactionData.description) errors.description = 'Description is required';
+    if (!transactionData.amount || isNaN(transactionData.amount) || Number(transactionData.amount) <= 0) {
+      errors.amount = 'Please enter a valid amount';
+    }
+    
+    setTransactionErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleSubmitTransaction = async () => {
+    if (!validateTransactionForm()) return;
+    
+    try {
+      const newTransaction = {
+        accountId: transactionData.accountId,
+        date: transactionData.date,
+        description: transactionData.description,
+        amount: parseFloat(transactionData.amount),
+        type: transactionData.type,
+        reference: transactionData.reference || ''
+      };
+      
+      await api.addBankTransaction(newTransaction);
+      
+      setSnackbar({
+        open: true,
+        message: 'Transaction added successfully',
+        severity: 'success'
+      });
+      
+      // Refresh data after adding
+      fetchBankData();
+      handleCloseTransactionDialog();
+    } catch (error) {
+      console.error("Error saving transaction:", error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to save transaction',
+        severity: 'error'
+      });
+    }
+  };
+
   return (
     <Box>
       <Typography variant="h4" gutterBottom>Bank Accounts</Typography>
@@ -312,7 +407,7 @@ const Accounts = () => {
                               <IconButton 
                                 color="secondary" 
                                 size="small"
-                                onClick={() => alert(`Add transaction to account ${account.id}`)}
+                                onClick={() => handleOpenTransactionDialog(account.id)}
                               >
                                 <ReceiptIcon />
                               </IconButton>
@@ -332,7 +427,7 @@ const Accounts = () => {
                     <Button 
                       variant="contained" 
                       startIcon={<AddIcon />}
-                      onClick={() => alert('Add Transaction feature would open here')}
+                      onClick={() => handleOpenTransactionDialog()}
                     >
                       Add Transaction
                     </Button>
@@ -498,6 +593,119 @@ const Accounts = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      {/* Add Transaction Dialog */}
+      <Dialog open={openTransactionDialog} onClose={handleCloseTransactionDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Add Transaction (ගනුදෙනුවක් එකතු කරන්න)</DialogTitle>
+        <DialogContent>
+          <Box component="form" sx={{ mt: 1 }}>
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              select
+              id="accountId"
+              label="Bank Account (බැංකු ගිණුම)"
+              name="accountId"
+              value={transactionData.accountId}
+              onChange={handleTransactionInputChange}
+              error={!!transactionErrors.accountId}
+              helperText={transactionErrors.accountId}
+            >
+              {bankAccounts.map((account) => (
+                <MenuItem key={account.id} value={account.id}>
+                  {`${account.bankName} - ${account.accountNumber}`}
+                </MenuItem>
+              ))}
+            </TextField>
+            
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="date"
+              label="Transaction Date (ගනුදෙනු දිනය)"
+              name="date"
+              type="date"
+              value={transactionData.date}
+              onChange={handleTransactionInputChange}
+              error={!!transactionErrors.date}
+              helperText={transactionErrors.date}
+              InputLabelProps={{ shrink: true }}
+            />
+            
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              select
+              id="type"
+              label="Transaction Type (ගනුදෙනු වර්ගය)"
+              name="type"
+              value={transactionData.type}
+              onChange={handleTransactionInputChange}
+            >
+              {transactionTypes.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </TextField>
+            
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="amount"
+              label="Amount (මුදල)"
+              name="amount"
+              type="number"
+              value={transactionData.amount}
+              onChange={handleTransactionInputChange}
+              error={!!transactionErrors.amount}
+              helperText={transactionErrors.amount}
+              InputProps={{
+                startAdornment: <InputAdornment position="start">Rs.</InputAdornment>,
+              }}
+            />
+            
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="description"
+              label="Description (විස්තරය)"
+              name="description"
+              value={transactionData.description}
+              onChange={handleTransactionInputChange}
+              error={!!transactionErrors.description}
+              helperText={transactionErrors.description}
+            />
+            
+            <TextField
+              margin="normal"
+              fullWidth
+              id="reference"
+              label="Reference (යොමුව)"
+              name="reference"
+              value={transactionData.reference}
+              onChange={handleTransactionInputChange}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseTransactionDialog} color="primary">
+            Cancel (අවලංගු කරන්න)
+          </Button>
+          <Button 
+            onClick={handleSubmitTransaction} 
+            variant="contained"
+            color="primary"
+          >
+            Add Transaction (ගනුදෙනුව එකතු කරන්න)
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
