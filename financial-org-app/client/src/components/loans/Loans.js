@@ -357,7 +357,7 @@ const Loans = () => {
   };
 
   const formatCurrency = (amount) => {
-    return `Rs. ${amount.toLocaleString()}`;
+    return amount !== undefined && amount !== null ? `Rs. ${amount.toLocaleString()}` : 'Rs. 0';
   };
 
   return (
@@ -413,6 +413,7 @@ const Loans = () => {
                             {new Date(loan.startDate).toLocaleDateString()} - {new Date(loan.endDate).toLocaleDateString()}
                           </Typography>
                         </TableCell>
+                        <TableCell>{formatCurrency(loan.interest)}</TableCell>
                         <TableCell>{formatCurrency(loan.balance)}</TableCell>
                         <TableCell>
                           <Chip 
