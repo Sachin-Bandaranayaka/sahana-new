@@ -5,6 +5,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import Layout from './components/Layout';
 import Dashboard from './components/dashboard/Dashboard';
 import Members from './components/members/Members';
+import MemberAccount from './components/members/MemberAccount';
 import CashBook from './components/cashbook/CashBook';
 import Loans from './components/loans/Loans';
 import Dividends from './components/dividends/Dividends';
@@ -38,6 +39,7 @@ function App() {
             <Route path="/" element={<Layout />}>
               <Route index element={<Dashboard />} />
               <Route path="members" element={<Members />} />
+              <Route path="member-account/:memberId" element={<MemberAccount />} />
               <Route path="cashbook" element={<CashBook />} />
               <Route path="loans" element={<Loans />} />
               <Route path="dividends" element={<Dividends />} />

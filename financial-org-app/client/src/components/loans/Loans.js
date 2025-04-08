@@ -119,7 +119,7 @@ const Loans = () => {
         amount: loan.amount,
         interestRate: loan.interestRate,
         startDate: loan.startDate,
-        endDate: loan.endDate,
+        endDate: loan.endDate || '',
         purpose: loan.purpose,
         dailyInterest: loan.dailyInterest,
         status: loan.status,
@@ -199,12 +199,6 @@ const Loans = () => {
     if (!formData.amount || formData.amount <= 0) errors.amount = 'Please enter a valid amount';
     if (!formData.interestRate || formData.interestRate < 0) errors.interestRate = 'Please enter a valid interest rate';
     if (!formData.startDate) errors.startDate = 'Start date is required';
-    if (!formData.endDate) errors.endDate = 'End date is required';
-    
-    // Check that end date is after start date
-    if (formData.startDate && formData.endDate && new Date(formData.endDate) <= new Date(formData.startDate)) {
-      errors.endDate = 'End date must be after start date';
-    }
     
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -255,7 +249,7 @@ const Loans = () => {
           amount: parseFloat(formData.amount),
           interestRate: parseFloat(formData.interestRate),
           startDate: formData.startDate,
-          endDate: formData.endDate,
+          endDate: formData.endDate || null,
           purpose: formData.purpose,
           dailyInterest: formData.dailyInterest,
           status: 'active'
@@ -532,12 +526,13 @@ const Loans = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 name="endDate"
-                label="End Date (අවසන් දිනය)"
+                label="Expected End Date (Optional)"
                 type="date"
                 value={formData.endDate}
                 onChange={handleInputChange}
                 fullWidth
                 InputLabelProps={{ shrink: true }}
+                helperText="Repayment is flexible. Unpaid interest after 3 months will be deducted from dividends."
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -593,6 +588,16 @@ const Loans = () => {
                 <MenuItem value="completed">Completed (සම්පූර්ණයි)</MenuItem>
                 <MenuItem value="defaulted">Defaulted (පැහැර හැර ඇත)</MenuItem>
               </TextField>
+            </Grid>
+            <Grid item xs={12}>
+              <Alert severity="info" sx={{ mt: 2 }}>
+                <Typography variant="subtitle2">Dividend & Loan Policy:</Typography>
+                <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
+                  <li>Loans don't have fixed end dates - members can repay when able</li>
+                  <li>If interest/installments remain unpaid for 3 months, the amount will be deducted from quarterly dividends</li>
+                  <li>Quarterly dividends calculation: Member's assets at end of quarter + Organization's assets → Dividend distribution</li>
+                </ul>
+              </Alert>
             </Grid>
           </Grid>
         </DialogContent>

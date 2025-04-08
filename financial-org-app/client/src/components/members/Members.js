@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -29,11 +30,13 @@ import {
   Edit as EditIcon, 
   Delete as DeleteIcon,
   Phone as PhoneIcon,
-  Email as EmailIcon
+  Email as EmailIcon,
+  AccountBalance as AccountIcon
 } from '@mui/icons-material';
 import api from '../../services/api';
 
 const Members = () => {
+  const navigate = useNavigate();
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
@@ -42,11 +45,12 @@ const Members = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [formData, setFormData] = useState({
+    member_id: '',
     name: '',
-    mobile: '',
-    email: '',
     address: '',
-    joinDate: '',
+    phone: '',
+    email: '',
+    joinDate: new Date().toISOString().split('T')[0],
     shares: 0,
     status: 'active'
   });
@@ -94,10 +98,11 @@ const Members = () => {
     if (mode === 'edit' && member) {
       setCurrentMember(member);
       setFormData({
+        member_id: member.member_id,
         name: member.name,
-        mobile: member.mobile || member.phone, // Handle both field names
-        email: member.email,
         address: member.address,
+        phone: member.phone || member.mobile,
+        email: member.email,
         joinDate: member.joinDate,
         shares: member.shares,
         status: member.status
@@ -105,10 +110,11 @@ const Members = () => {
     } else {
       setCurrentMember(null);
       setFormData({
+        member_id: '',
         name: '',
-        mobile: '',
-        email: '',
         address: '',
+        phone: '',
+        email: '',
         joinDate: new Date().toISOString().split('T')[0],
         shares: 0,
         status: 'active'
@@ -141,19 +147,29 @@ const Members = () => {
   const validateForm = () => {
     const errors = {};
     
+    // Required fields
+    if (!formData.member_id.trim()) errors.member_id = 'Member ID is required';
     if (!formData.name.trim()) errors.name = 'Name is required';
-    if (!formData.mobile.trim()) errors.mobile = 'Mobile number is required';
-    else if (!/^\d{10}$/.test(formData.mobile.replace(/\D/g, ''))) {
-      errors.mobile = 'Enter a valid 10-digit mobile number';
+    if (!formData.phone.trim()) errors.phone = 'Phone number is required';
+    if (!formData.joinDate) errors.joinDate = 'Join date is required';
+    
+    // Format validations
+    if (formData.phone && !/^\d{10}$/.test(formData.phone.replace(/\D/g, ''))) {
+      errors.phone = 'Enter a valid 10-digit phone number';
     }
     
-    if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       errors.email = 'Enter a valid email address';
     }
     
-    if (!formData.joinDate) errors.joinDate = 'Join date is required';
+    if (formData.shares < 0) {
+      errors.shares = 'Shares cannot be negative';
+    }
     
-    if (formData.shares < 0) errors.shares = 'Shares cannot be negative';
+    // Member ID format validation (you can customize this based on your requirements)
+    if (formData.member_id && !/^[A-Z0-9]{3,10}$/.test(formData.member_id)) {
+      errors.member_id = 'Member ID must be 3-10 characters of uppercase letters and numbers';
+    }
     
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -223,219 +239,221 @@ const Members = () => {
     });
   };
 
+  const handleViewMemberAccount = (memberId) => {
+    navigate(`/member-account/${memberId}`);
+  };
+
   return (
-    <Box sx={{ py: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1">
-          Members Management (සාමාජික කළමනාකරණය)
-        </Typography>
-        <Button 
-          variant="contained" 
-          color="primary" 
+    <Box sx={{ p: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+        <Typography variant="h4">Members</Typography>
+        <Button
+          variant="contained"
           startIcon={<AddIcon />}
           onClick={() => handleOpenDialog('add')}
         >
-          Add Member (සාමාජිකයෙකු එකතු කරන්න)
+          Add Member
         </Button>
       </Box>
-      
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <>
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Name (නම)</TableCell>
-                  <TableCell>Contact (සම්බන්ධතා)</TableCell>
-                  <TableCell>Join Date (එක්වූ දිනය)</TableCell>
-                  <TableCell>Shares (කොටස්)</TableCell>
-                  <TableCell>Status (තත්වය)</TableCell>
-                  <TableCell align="right">Actions (ක්‍රියා)</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {members
-                  .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                  .map((member) => (
-                    <TableRow key={member.id} hover>
-                      <TableCell>
-                        <Typography variant="body1">{member.name}</Typography>
-                        <Typography variant="body2" color="textSecondary">{member.address}</Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-                            <PhoneIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />
-                            <Typography variant="body2">{member.mobile}</Typography>
-                          </Box>
-                          {member.email && (
-                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                              <EmailIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />
-                              <Typography variant="body2">{member.email}</Typography>
-                            </Box>
-                          )}
-                        </Box>
-                      </TableCell>
-                      <TableCell>{new Date(member.joinDate).toLocaleDateString()}</TableCell>
-                      <TableCell>{member.shares}</TableCell>
-                      <TableCell>
-                        <Chip 
-                          label={member.status === 'active' ? 'Active' : 'Inactive'} 
-                          color={member.status === 'active' ? 'success' : 'default'}
-                          size="small"
-                        />
-                      </TableCell>
-                      <TableCell align="right">
-                        <IconButton 
-                          color="primary" 
-                          onClick={() => handleOpenDialog('edit', member)}
-                          size="small"
-                        >
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton 
-                          color="error" 
-                          onClick={() => handleDeleteMember(member.id)}
-                          size="small"
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-          <TablePagination
-            rowsPerPageOptions={[5, 10, 25]}
-            component="div"
-            count={members.length}
-            rowsPerPage={rowsPerPage}
-            page={page}
-            onPageChange={handleChangePage}
-            onRowsPerPageChange={handleChangeRowsPerPage}
-          />
-        </>
-      )}
 
-      {/* Add/Edit Member Dialog */}
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
-        <DialogTitle>
-          {editMode ? 'Edit Member (සාමාජිකයා සංස්කරණය කරන්න)' : 'Add New Member (නව සාමාජිකයෙකු එකතු කරන්න)'}
-        </DialogTitle>
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Member ID</TableCell>
+              <TableCell>Name</TableCell>
+              <TableCell>Contact</TableCell>
+              <TableCell>Join Date</TableCell>
+              <TableCell>Shares</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell>Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={7} align="center">
+                  <CircularProgress />
+                </TableCell>
+              </TableRow>
+            ) : (
+              members
+                .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                .map((member) => (
+                  <TableRow key={member.id}>
+                    <TableCell>{member.member_id}</TableCell>
+                    <TableCell>{member.name}</TableCell>
+                    <TableCell>
+                      <Box>
+                        <Typography variant="body2">{member.phone}</Typography>
+                        {member.email && (
+                          <Typography variant="caption" color="textSecondary">
+                            {member.email}
+                          </Typography>
+                        )}
+                      </Box>
+                    </TableCell>
+                    <TableCell>{new Date(member.joinDate).toLocaleDateString()}</TableCell>
+                    <TableCell>{member.shares}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={member.status}
+                        color={member.status === 'active' ? 'success' : 'error'}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <IconButton
+                        color="primary"
+                        onClick={() => handleOpenDialog('edit', member)}
+                      >
+                        <EditIcon />
+                      </IconButton>
+                      <IconButton
+                        color="primary"
+                        onClick={() => handleViewMemberAccount(member.id)}
+                      >
+                        <AccountIcon />
+                      </IconButton>
+                      <IconButton
+                        color="error"
+                        onClick={() => handleDeleteMember(member.id)}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))
+            )}
+          </TableBody>
+        </Table>
+        <TablePagination
+          rowsPerPageOptions={[5, 10, 25]}
+          component="div"
+          count={members.length}
+          rowsPerPage={rowsPerPage}
+          page={page}
+          onPageChange={handleChangePage}
+          onRowsPerPageChange={handleChangeRowsPerPage}
+        />
+      </TableContainer>
+
+      {/* Member Form Dialog */}
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>{editMode ? 'Edit Member' : 'Add New Member'}</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12}>
               <TextField
+                fullWidth
+                label="Member ID"
+                name="member_id"
+                value={formData.member_id}
+                onChange={handleInputChange}
+                error={!!formErrors.member_id}
+                helperText={formErrors.member_id}
+                disabled={editMode}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Name"
                 name="name"
-                label="Full Name (සම්පූර්ණ නම)"
                 value={formData.name}
                 onChange={handleInputChange}
-                fullWidth
-                required
                 error={!!formErrors.name}
                 helperText={formErrors.name}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
-                name="mobile"
-                label="Mobile Number (ජංගම දුරකථන අංකය)"
-                value={formData.mobile}
-                onChange={handleInputChange}
                 fullWidth
-                required
-                error={!!formErrors.mobile}
-                helperText={formErrors.mobile}
+                label="Phone"
+                name="phone"
+                value={formData.phone}
+                onChange={handleInputChange}
+                error={!!formErrors.phone}
+                helperText={formErrors.phone}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
+                fullWidth
+                label="Email"
                 name="email"
-                label="Email Address (විද්‍යුත් තැපෑල)"
+                type="email"
                 value={formData.email}
                 onChange={handleInputChange}
-                fullWidth
                 error={!!formErrors.email}
                 helperText={formErrors.email}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                name="joinDate"
-                label="Join Date (එක්වූ දිනය)"
-                type="date"
-                value={formData.joinDate}
-                onChange={handleInputChange}
-                fullWidth
-                required
-                InputLabelProps={{ shrink: true }}
-                error={!!formErrors.joinDate}
-                helperText={formErrors.joinDate}
-              />
-            </Grid>
             <Grid item xs={12}>
               <TextField
+                fullWidth
+                label="Address"
                 name="address"
-                label="Address (ලිපිනය)"
                 value={formData.address}
                 onChange={handleInputChange}
-                fullWidth
                 multiline
                 rows={2}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
-                name="shares"
-                label="Shares Owned (හිමි කොටස්)"
-                type="number"
-                value={formData.shares}
-                onChange={handleInputChange}
                 fullWidth
-                InputProps={{ inputProps: { min: 0 } }}
-                error={!!formErrors.shares}
-                helperText={formErrors.shares}
+                label="Join Date"
+                name="joinDate"
+                type="date"
+                value={formData.joinDate}
+                onChange={handleInputChange}
+                error={!!formErrors.joinDate}
+                helperText={formErrors.joinDate}
+                InputLabelProps={{ shrink: true }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
-                name="status"
+                fullWidth
+                label="Shares"
+                name="shares"
+                type="number"
+                value={formData.shares}
+                onChange={handleInputChange}
+                InputProps={{ inputProps: { min: 0 } }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
                 select
-                label="Status (තත්වය)"
+                label="Status"
+                name="status"
                 value={formData.status}
                 onChange={handleInputChange}
-                fullWidth
               >
-                <MenuItem value="active">Active (ක්‍රියාකාරී)</MenuItem>
-                <MenuItem value="inactive">Inactive (අක්‍රිය)</MenuItem>
-                <MenuItem value="suspended">Suspended (අත්හිටුවා ඇත)</MenuItem>
+                <MenuItem value="active">Active</MenuItem>
+                <MenuItem value="inactive">Inactive</MenuItem>
               </TextField>
             </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog} color="primary">
-            Cancel (අවලංගු කරන්න)
-          </Button>
-          <Button onClick={handleSubmit} color="primary" variant="contained">
-            {editMode ? 'Update (යාවත්කාලීන කරන්න)' : 'Add (එකතු කරන්න)'}
+          <Button onClick={handleCloseDialog}>Cancel</Button>
+          <Button onClick={handleSubmit} variant="contained">
+            {editMode ? 'Update' : 'Add'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar for notifications */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
         onClose={handleCloseSnackbar}
       >
-        <Alert 
-          onClose={handleCloseSnackbar} 
+        <Alert
+          onClose={handleCloseSnackbar}
           severity={snackbar.severity}
           sx={{ width: '100%' }}
         >

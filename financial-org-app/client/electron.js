@@ -37,6 +37,7 @@ function createTables() {
   const tables = [
     `CREATE TABLE IF NOT EXISTS members (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      member_id TEXT UNIQUE NOT NULL,
       name TEXT NOT NULL,
       address TEXT,
       phone TEXT,
@@ -192,6 +193,56 @@ function createTables() {
 }
 
 function migrateTables() {
+  // Check if the members table has a member_id column, if not add it
+  db.get("SELECT 1 FROM pragma_table_info('members') WHERE name='member_id'", (err, row) => {
+    if (err) {
+      console.error('Error checking for member_id column:', err);
+      return;
+    }
+    
+    if (!row) {
+      console.log('Adding member_id column to members table...');
+      db.serialize(() => {
+        // Add the column
+        db.run("ALTER TABLE members ADD COLUMN member_id TEXT", (err) => {
+          if (err) {
+            console.error('Error adding member_id column:', err);
+            return;
+          }
+          console.log('Successfully added member_id column to members table');
+          
+          // Generate member IDs for existing members
+          db.all("SELECT id FROM members WHERE member_id IS NULL", (err, rows) => {
+            if (err) {
+              console.error('Error fetching members without member_id:', err);
+              return;
+            }
+            
+            rows.forEach(member => {
+              const memberId = `M${String(member.id).padStart(4, '0')}`;
+              db.run("UPDATE members SET member_id = ? WHERE id = ?", [memberId, member.id], (err) => {
+                if (err) {
+                  console.error(`Error updating member_id for member ${member.id}:`, err);
+                }
+              });
+            });
+          });
+        });
+        
+        // Add unique constraint after all members have IDs
+        db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_members_member_id ON members(member_id)", (err) => {
+          if (err) {
+            console.error('Error creating unique index on member_id:', err);
+          } else {
+            console.log('Successfully created unique index on member_id');
+          }
+        });
+      });
+    } else {
+      console.log('member_id column already exists in members table');
+    }
+  });
+  
   // Check if the cashbook table has a memberId column, if not add it
   db.get("PRAGMA table_info(cashbook)", (err, rows) => {
     if (err) {
@@ -357,6 +408,80 @@ ipcMain.handle('get-members', async () => {
       if (err) reject(err);
       else resolve(rows);
     });
+  });
+});
+
+ipcMain.handle('get-member', async (event, memberId) => {
+  console.log('Received request for member ID:', memberId);
+  return new Promise((resolve, reject) => {
+    db.get('SELECT * FROM members WHERE id = ?', [memberId], (err, row) => {
+      if (err) {
+        console.error('Error fetching member:', err);
+        reject(err);
+      } else {
+        console.log('Found member:', row);
+        resolve(row);
+      }
+    });
+  });
+});
+
+ipcMain.handle('get-member-transactions', async (event, memberId) => {
+  console.log('Received request for member transactions:', memberId);
+  return new Promise((resolve, reject) => {
+    // Fetch all types of transactions for a member
+    const promises = [
+      // Cashbook entries
+      new Promise((resolve, reject) => {
+        db.all('SELECT id, date, description, amount, "cash" as type FROM cashbook WHERE memberId = ?', 
+          [memberId], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows || []);
+          });
+      }),
+      
+      // Loan entries
+      new Promise((resolve, reject) => {
+        db.all('SELECT id, startDate as date, purpose as description, amount, "loan" as type FROM loans WHERE memberId = ?', 
+          [memberId], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows || []);
+          });
+      }),
+      
+      // Loan payments
+      new Promise((resolve, reject) => {
+        db.all(`SELECT p.id, p.date, p.note as description, p.amount, "loan_payment" as type 
+                FROM loan_payments p
+                JOIN loans l ON p.loanId = l.id
+                WHERE l.memberId = ?`, 
+          [memberId], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows || []);
+          });
+      }),
+      
+      // Dividend payments
+      new Promise((resolve, reject) => {
+        db.all('SELECT id, paymentDate as date, "Dividend payment" as description, amount, "dividend" as type FROM dividend_payments WHERE memberId = ?', 
+          [memberId], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows || []);
+          });
+      })
+    ];
+    
+    Promise.all(promises)
+      .then(results => {
+        // Combine all transactions and sort by date
+        const transactions = results.flat().filter(t => t !== null);
+        console.log(`Found ${transactions.length} transactions for member ${memberId}`);
+        resolve(transactions.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)));
+      })
+      .catch(error => {
+        console.error('Error fetching member transactions:', error);
+        reject(error);
+      });
   });
 });
 

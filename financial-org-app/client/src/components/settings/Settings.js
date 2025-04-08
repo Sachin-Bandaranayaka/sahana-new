@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -13,34 +13,88 @@ import {
   CardContent,
   CardActions,
   Alert,
-  InputAdornment
+  InputAdornment,
+  CircularProgress,
+  Snackbar
 } from '@mui/material';
 import {
   Save as SaveIcon,
   Backup as BackupIcon,
   Restore as RestoreIcon,
   Edit as EditIcon,
-  Business as BusinessIcon
+  Business as BusinessIcon,
+  FolderOpen as FolderOpenIcon
 } from '@mui/icons-material';
+import api from '../../services/api';
 
 const Settings = () => {
   const [tabValue, setTabValue] = useState(0);
   const [editMode, setEditMode] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [orgSettings, setOrgSettings] = useState({
-    name: 'Sahana Welfare Organization',
-    address: '123 Main Street, Colombo 03, Sri Lanka',
-    phone: '011-2345678',
-    email: 'info@sahanawelfare.org',
-    regNumber: 'REG/2022/WEL/001',
-    foundedYear: '2015',
-    taxId: 'TAX123456789',
-    quarterEndMonths: 'March, June, September, December'
+    name: '',
+    address: '',
+    phone: '',
+    email: '',
+    regNumber: '',
+    foundedYear: '',
+    taxId: '',
+    quarterEndMonths: '',
+    defaultInterestRate: '',
+    membershipFee: '',
+    shareValue: ''
   });
   
-  const [backupPath, setBackupPath] = useState('C:/Backups/SahanaWelfare');
+  const [backupPath, setBackupPath] = useState('');
   const [restorePath, setRestorePath] = useState('');
-  const [backupSuccess, setBackupSuccess] = useState(false);
-  const [restoreSuccess, setRestoreSuccess] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success'
+  });
+
+  // Load settings when component mounts
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const fetchSettings = async () => {
+    try {
+      setLoading(true);
+      const settings = await api.getSettings();
+      
+      // Convert array of settings objects to a single settings object
+      const settingsObj = settings.reduce((acc, setting) => {
+        acc[setting.name] = setting.value;
+        return acc;
+      }, {});
+      
+      setOrgSettings({
+        name: settingsObj.orgName || '',
+        address: settingsObj.orgAddress || '',
+        phone: settingsObj.orgPhone || '',
+        email: settingsObj.orgEmail || '',
+        regNumber: settingsObj.registrationNumber || '',
+        foundedYear: settingsObj.foundedYear || '',
+        taxId: settingsObj.taxId || '',
+        quarterEndMonths: settingsObj.quarterEndMonths || '',
+        defaultInterestRate: settingsObj.defaultLoanInterest || '10',
+        membershipFee: settingsObj.membershipFee || '1000',
+        shareValue: settingsObj.shareValue || '1000'
+      });
+      
+      setLoading(false);
+    } catch (error) {
+      console.error("Error fetching settings:", error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to load settings: ' + error.message,
+        severity: 'error'
+      });
+      setLoading(false);
+    }
+  };
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -54,32 +108,148 @@ const Settings = () => {
     });
   };
 
-  const handleSaveSettings = () => {
-    // In production, this would save to the database
-    setEditMode(false);
-    alert('Settings saved successfully!');
+  const handleSaveSettings = async () => {
+    try {
+      setIsProcessing(true);
+      
+      // Convert settings object to array of settings objects for database
+      const settingsToUpdate = [
+        { name: 'orgName', value: orgSettings.name },
+        { name: 'orgAddress', value: orgSettings.address },
+        { name: 'orgPhone', value: orgSettings.phone },
+        { name: 'orgEmail', value: orgSettings.email },
+        { name: 'registrationNumber', value: orgSettings.regNumber },
+        { name: 'foundedYear', value: orgSettings.foundedYear },
+        { name: 'taxId', value: orgSettings.taxId },
+        { name: 'quarterEndMonths', value: orgSettings.quarterEndMonths },
+        { name: 'defaultLoanInterest', value: orgSettings.defaultInterestRate },
+        { name: 'membershipFee', value: orgSettings.membershipFee },
+        { name: 'shareValue', value: orgSettings.shareValue }
+      ];
+      
+      // Update each setting
+      for (const setting of settingsToUpdate) {
+        await api.updateSetting(setting);
+      }
+      
+      setEditMode(false);
+      setSnackbar({
+        open: true,
+        message: 'Settings saved successfully',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error("Error saving settings:", error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to save settings: ' + error.message,
+        severity: 'error'
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  const handleBackup = () => {
-    // In production, this would trigger a database backup
-    setTimeout(() => {
-      setBackupSuccess(true);
-      setTimeout(() => setBackupSuccess(false), 3000);
-    }, 1000);
-  };
-
-  const handleRestore = () => {
-    // In production, this would restore from a backup file
-    if (!restorePath) {
-      alert('Please select a backup file to restore from');
+  const handleBackup = async () => {
+    if (!backupPath) {
+      setSnackbar({
+        open: true,
+        message: 'Please enter a backup file path',
+        severity: 'warning'
+      });
       return;
     }
     
-    setTimeout(() => {
-      setRestoreSuccess(true);
-      setTimeout(() => setRestoreSuccess(false), 3000);
-    }, 1000);
+    try {
+      setIsProcessing(true);
+      const result = await api.backupData(backupPath);
+      
+      if (result.success) {
+        setSnackbar({
+          open: true,
+          message: result.message || 'Backup created successfully',
+          severity: 'success'
+        });
+      } else {
+        setSnackbar({
+          open: true,
+          message: result.message || 'Backup failed',
+          severity: 'error'
+        });
+      }
+    } catch (error) {
+      console.error("Error during backup:", error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to create backup: ' + error.message,
+        severity: 'error'
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
+
+  const handleRestore = async () => {
+    if (!restorePath) {
+      setSnackbar({
+        open: true,
+        message: 'Please enter a backup file path to restore from',
+        severity: 'warning'
+      });
+      return;
+    }
+    
+    // Confirm restore operation
+    if (!window.confirm('Are you sure you want to restore from this backup? This will overwrite all current data.')) {
+      return;
+    }
+    
+    try {
+      setIsProcessing(true);
+      const result = await api.restoreData(restorePath);
+      
+      if (result.success) {
+        setSnackbar({
+          open: true,
+          message: result.message || 'Data restored successfully',
+          severity: 'success'
+        });
+        
+        // Refresh settings to show updated values after restore
+        fetchSettings();
+      } else {
+        setSnackbar({
+          open: true,
+          message: result.message || 'Restore failed',
+          severity: 'error'
+        });
+      }
+    } catch (error) {
+      console.error("Error during restore:", error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to restore data: ' + error.message,
+        severity: 'error'
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  
+  const handleCloseSnackbar = () => {
+    setSnackbar({
+      ...snackbar,
+      open: false
+    });
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <Box>
@@ -105,8 +275,9 @@ const Settings = () => {
                   color={editMode ? "success" : "primary"}
                   startIcon={editMode ? <SaveIcon /> : <EditIcon />}
                   onClick={editMode ? handleSaveSettings : () => setEditMode(true)}
+                  disabled={isProcessing}
                 >
-                  {editMode ? "Save Changes" : "Edit Settings"}
+                  {isProcessing ? 'Processing...' : editMode ? "Save Changes" : "Edit Settings"}
                 </Button>
               </Box>
               
@@ -118,7 +289,7 @@ const Settings = () => {
                     name="name"
                     value={orgSettings.name}
                     onChange={handleOrgInputChange}
-                    disabled={!editMode}
+                    disabled={!editMode || isProcessing}
                     margin="normal"
                   />
                 </Grid>
@@ -129,7 +300,7 @@ const Settings = () => {
                     name="regNumber"
                     value={orgSettings.regNumber}
                     onChange={handleOrgInputChange}
-                    disabled={!editMode}
+                    disabled={!editMode || isProcessing}
                     margin="normal"
                   />
                 </Grid>
@@ -140,7 +311,7 @@ const Settings = () => {
                     name="phone"
                     value={orgSettings.phone}
                     onChange={handleOrgInputChange}
-                    disabled={!editMode}
+                    disabled={!editMode || isProcessing}
                     margin="normal"
                   />
                 </Grid>
@@ -151,7 +322,7 @@ const Settings = () => {
                     name="email"
                     value={orgSettings.email}
                     onChange={handleOrgInputChange}
-                    disabled={!editMode}
+                    disabled={!editMode || isProcessing}
                     margin="normal"
                   />
                 </Grid>
@@ -162,7 +333,7 @@ const Settings = () => {
                     name="address"
                     value={orgSettings.address}
                     onChange={handleOrgInputChange}
-                    disabled={!editMode}
+                    disabled={!editMode || isProcessing}
                     multiline
                     rows={2}
                     margin="normal"
@@ -175,7 +346,7 @@ const Settings = () => {
                     name="foundedYear"
                     value={orgSettings.foundedYear}
                     onChange={handleOrgInputChange}
-                    disabled={!editMode}
+                    disabled={!editMode || isProcessing}
                     margin="normal"
                   />
                 </Grid>
@@ -186,7 +357,7 @@ const Settings = () => {
                     name="taxId"
                     value={orgSettings.taxId}
                     onChange={handleOrgInputChange}
-                    disabled={!editMode}
+                    disabled={!editMode || isProcessing}
                     margin="normal"
                   />
                 </Grid>
@@ -197,7 +368,7 @@ const Settings = () => {
                     name="quarterEndMonths"
                     value={orgSettings.quarterEndMonths}
                     onChange={handleOrgInputChange}
-                    disabled={!editMode}
+                    disabled={!editMode || isProcessing}
                     margin="normal"
                     helperText="Comma separated list of months"
                   />
@@ -217,8 +388,9 @@ const Settings = () => {
                     fullWidth
                     label="Default Loan Interest Rate"
                     name="defaultInterestRate"
-                    value="10"
-                    disabled={!editMode}
+                    value={orgSettings.defaultInterestRate}
+                    onChange={handleOrgInputChange}
+                    disabled={!editMode || isProcessing}
                     margin="normal"
                     InputProps={{
                       endAdornment: <InputAdornment position="end">%</InputAdornment>,
@@ -230,8 +402,9 @@ const Settings = () => {
                     fullWidth
                     label="Default Membership Fee"
                     name="membershipFee"
-                    value="5000"
-                    disabled={!editMode}
+                    value={orgSettings.membershipFee}
+                    onChange={handleOrgInputChange}
+                    disabled={!editMode || isProcessing}
                     margin="normal"
                     InputProps={{
                       startAdornment: <InputAdornment position="start">Rs.</InputAdornment>,
@@ -243,8 +416,9 @@ const Settings = () => {
                     fullWidth
                     label="Default Share Value"
                     name="shareValue"
-                    value="1000"
-                    disabled={!editMode}
+                    value={orgSettings.shareValue}
+                    onChange={handleOrgInputChange}
+                    disabled={!editMode || isProcessing}
                     margin="normal"
                     InputProps={{
                       startAdornment: <InputAdornment position="start">Rs.</InputAdornment>,
@@ -272,28 +446,24 @@ const Settings = () => {
                     
                     <TextField
                       fullWidth
-                      label="Backup Location"
+                      label="Backup File Path"
                       value={backupPath}
                       onChange={(e) => setBackupPath(e.target.value)}
                       margin="normal"
-                      helperText="Specify the folder where backup files will be saved"
+                      helperText="Specify the full path including filename (e.g., C:/Backups/sahana_backup.json)"
+                      disabled={isProcessing}
                     />
-                    
-                    {backupSuccess && (
-                      <Alert severity="success" sx={{ mt: 2 }}>
-                        Backup created successfully at {new Date().toLocaleString()}
-                      </Alert>
-                    )}
                   </CardContent>
                   <CardActions>
                     <Button
                       fullWidth
                       variant="contained"
                       color="primary"
-                      startIcon={<BackupIcon />}
+                      startIcon={isProcessing ? <CircularProgress size={24} /> : <BackupIcon />}
                       onClick={handleBackup}
+                      disabled={isProcessing}
                     >
-                      Create Backup
+                      {isProcessing ? 'Processing...' : 'Create Backup'}
                     </Button>
                   </CardActions>
                 </Card>
@@ -318,23 +488,19 @@ const Settings = () => {
                       onChange={(e) => setRestorePath(e.target.value)}
                       margin="normal"
                       helperText="Enter the full path to the backup file"
+                      disabled={isProcessing}
                     />
-                    
-                    {restoreSuccess && (
-                      <Alert severity="success" sx={{ mt: 2 }}>
-                        Data restored successfully at {new Date().toLocaleString()}
-                      </Alert>
-                    )}
                   </CardContent>
                   <CardActions>
                     <Button
                       fullWidth
                       variant="contained"
                       color="secondary"
-                      startIcon={<RestoreIcon />}
+                      startIcon={isProcessing ? <CircularProgress size={24} /> : <RestoreIcon />}
                       onClick={handleRestore}
+                      disabled={isProcessing}
                     >
-                      Restore From Backup
+                      {isProcessing ? 'Processing...' : 'Restore From Backup'}
                     </Button>
                   </CardActions>
                 </Card>
@@ -343,6 +509,22 @@ const Settings = () => {
           )}
         </Box>
       </Paper>
+      
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseSnackbar} 
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
