@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld(
     getDividends: () => ipcRenderer.invoke('get-dividends'),
     addDividend: (dividend) => ipcRenderer.invoke('add-dividend', dividend),
     getDividendPayments: (dividendId) => ipcRenderer.invoke('get-dividend-payments', dividendId),
+    addDividendPayment: (payment) => ipcRenderer.invoke('add-dividend-payment', payment),
     updateDividendPayment: (id, payment) => ipcRenderer.invoke('update-dividend-payment', id, payment),
     
     // Settings
@@ -62,7 +63,19 @@ contextBridge.exposeInMainWorld(
     restoreData: (path) => ipcRenderer.invoke('restore-database', path),
     
     // Reports
-    generateReport: (reportType, params) => ipcRenderer.invoke('generate-report', reportType, params)
+    generateReport: (reportType, params) => ipcRenderer.invoke('generate-report', reportType, params),
+    
+    // Calculations
+    calculateMemberAsset: (memberId) => ipcRenderer.invoke('calculate-member-asset', memberId),
+    calculateOrgAssets: () => ipcRenderer.invoke('calculate-org-assets'),
+    calculateProportionalDividends: (params) => ipcRenderer.invoke('calculate-proportional-dividends', params),
+    calculateQuarterlyProfit: (quarter, year) => ipcRenderer.invoke('calculate-quarterly-profit', quarter, year),
+    
+    // Cashbook
+    getCashbookEntries: () => ipcRenderer.invoke('get-cashbook-entries'),
+    getCashbookEntriesByDateRange: (startDate, endDate) => ipcRenderer.invoke('get-cashbook-entries-by-date-range', startDate, endDate),
+    addCashbookEntry: (entry) => ipcRenderer.invoke('add-cashbook-entry', entry),
+    updateCashbookEntry: (id, entry) => ipcRenderer.invoke('update-cashbook-entry', id, entry)
   }
 );
 

@@ -56,19 +56,31 @@ graph LR
 
 Dividends are portions of profit distributed to members of the organization.
 
-#### Current Dividend Calculation
+#### Previous Dividend Calculation Model
 
 - **Dividend Pool** = Quarterly Profit × Dividend Rate (e.g., 8.5%)
 - **Per Member Dividend** = Dividend Pool / Number of Active Members
 
-This is a simplification of the traditional dividend model where all active members receive an equal share of the profits, regardless of their share ownership.
+This was a simplification of the traditional dividend model where all active members received an equal share of the profits, regardless of their share ownership or contributions.
+
+#### New Proportional Dividend Calculation
+
+The system now implements a proportional dividend distribution model based on each member's contribution to the organization's total assets:
+
+- **Dividend Pool** = Quarterly Profit × Dividend Rate (e.g., 8.5%) 
+- **Organization Total Assets** = Cash Contributions + Bank Balances + Outstanding Loans
+- **Member's Asset Proportion** = Member's Total Assets / Organization Total Assets
+- **Individual Dividend** = Dividend Pool × Member's Asset Proportion
+
+This approach better rewards members based on their financial contributions to the organization. Members with higher contributions receive proportionally higher dividends.
 
 ```mermaid
 flowchart TD
     A[Quarterly Profit] -->|Apply Dividend Rate| B[Dividend Pool]
-    C[Number of Active Members] --> D[Dividend Per Member]
-    B --> D
-    D --> E[Individual Member Dividends]
+    C[Member Assets] --> E[Member Asset Proportion]
+    D[Organization Total Assets] --> E
+    B --> F[Individual Member Dividends]
+    E --> F
 ```
 
 ### 4. Loans
@@ -94,7 +106,7 @@ graph TD
 
 ## Financial Workflows
 
-### Quarterly Financial Cycle
+### Quarterly Financial Cycle (Updated with Proportional Dividends)
 
 ```mermaid
 sequenceDiagram
@@ -110,7 +122,9 @@ sequenceDiagram
     B->>D: Calculate Quarterly Profit
     C->>D: Subtract Expenses
     D->>E: Calculate Dividend Pool (Profit × Rate)
-    E->>F: Distribute Dividends Equally to Active Members
+    A->>E: Calculate Total Organization Assets
+    F->>E: Calculate Member's Asset Proportion
+    E->>F: Distribute Dividends Proportionally Based on Asset Contribution
 ```
 
 ### Loan Issuance and Repayment
@@ -159,7 +173,7 @@ graph TD
 
 ## Example Calculations
 
-### Dividend Calculation Example
+### Dividend Calculation Example (Previous Equal-Share Method)
 
 Given:
 - Quarterly Profit: Rs. 100,000
@@ -169,6 +183,24 @@ Given:
 Calculations:
 1. Dividend Pool = Rs. 100,000 × 8.5% = Rs. 8,500
 2. Dividend Per Member = Rs. 8,500 / 20 members = Rs. 425 per member
+
+### Dividend Calculation Example (New Proportional Method)
+
+Given:
+- Quarterly Profit: Rs. 100,000
+- Dividend Rate: 8.5%
+- Organization Total Assets: Rs. 1,000,000
+- Member A Total Assets: Rs. 200,000
+- Member B Total Assets: Rs. 50,000
+
+Calculations:
+1. Dividend Pool = Rs. 100,000 × 8.5% = Rs. 8,500
+2. Member A Asset Proportion = Rs. 200,000 / Rs. 1,000,000 = 0.2 (20%)
+3. Member B Asset Proportion = Rs. 50,000 / Rs. 1,000,000 = 0.05 (5%)
+4. Member A Dividend = Rs. 8,500 × 0.2 = Rs. 1,700
+5. Member B Dividend = Rs. 8,500 × 0.05 = Rs. 425
+
+This proportional approach ensures that members with higher financial contributions receive proportionally higher dividend payments, creating a more equitable system that incentivizes contribution to the organization's capital base.
 
 ### Loan Interest Calculation Example
 
@@ -184,4 +216,13 @@ Calculations:
 
 ## Conclusion
 
-The financial logic of this application creates a self-sustaining ecosystem where loan interest creates income, which generates profits, which are partially distributed as dividends to reward active membership. This creates incentives for members to both maintain active status and repay loans on time, contributing to the organization's overall financial health. 
+The financial logic of this application creates a self-sustaining ecosystem where loan interest creates income, which generates profits, which are partially distributed as dividends to reward active membership. 
+
+The new proportional dividend distribution system enhances this model by directly linking member rewards to their financial contributions. This creates stronger incentives for members to:
+
+1. Increase their financial contributions to the organization
+2. Maintain active membership status
+3. Repay loans on time
+4. Participate in the organization's growth
+
+By implementing proportional dividends based on member assets, the system provides a more equitable reward mechanism that better aligns with cooperative financial principles and encourages long-term investment in the organization's success. 

@@ -47,7 +47,7 @@ const Dividends = () => {
     dividendRate: '',
     calculationDate: new Date().toISOString().split('T')[0]
   });
-  const [profitFormData, setProfilFormData] = useState({
+  const [profitFormData, setProfitFormData] = useState({
     quarterEndDate: new Date().toISOString().split('T')[0],
     quarter: getCurrentQuarter(),
     year: new Date().getFullYear(),
@@ -55,6 +55,13 @@ const Dividends = () => {
     expenseAmount: '',
     profitAmount: 0,
     dividendRate: 8.5
+  });
+  const [dividendDistribution, setDividendDistribution] = useState([]);
+  const [orgAssets, setOrgAssets] = useState({
+    totalAssets: 0,
+    cashContributions: 0,
+    bankBalances: 0,
+    outstandingLoans: 0
   });
   const [formErrors, setFormErrors] = useState({});
   const [profitFormErrors, setProfitFormErrors] = useState({});
@@ -228,7 +235,7 @@ const Dividends = () => {
     const currentQuarter = getCurrentQuarter();
     const currentYear = currentDate.getFullYear();
     
-    setProfilFormData({
+    setProfitFormData({
       quarterEndDate: getQuarterEndDate(currentQuarter, currentYear),
       quarter: currentQuarter,
       year: currentYear,
@@ -247,32 +254,22 @@ const Dividends = () => {
 
   const handleProfitInputChange = (e) => {
     const { name, value } = e.target;
-    let newValue = value;
+    const updatedFormData = {
+      ...profitFormData,
+      [name]: value
+    };
     
+    // Auto-calculate profit amount when income or expense is changed
     if (name === 'incomeAmount' || name === 'expenseAmount') {
-      newValue = value.replace(/[^0-9.]/g, '');
-      if (newValue && !isNaN(newValue)) {
-        const profit = name === 'incomeAmount' 
-          ? Number(newValue) - Number(profitFormData.expenseAmount || 0)
-          : Number(profitFormData.incomeAmount || 0) - Number(newValue);
-        
-        setProfilFormData(prev => ({
-          ...prev,
-          [name]: newValue,
-          profitAmount: profit
-        }));
-      } else {
-        setProfilFormData(prev => ({
-          ...prev,
-          [name]: newValue
-        }));
+      const income = name === 'incomeAmount' ? Number(value) : Number(profitFormData.incomeAmount) || 0;
+      const expense = name === 'expenseAmount' ? Number(value) : Number(profitFormData.expenseAmount) || 0;
+      
+      if (!isNaN(income) && !isNaN(expense)) {
+        updatedFormData.profitAmount = Math.max(0, income - expense);
       }
-    } else {
-      setProfilFormData(prev => ({
-        ...prev,
-        [name]: value
-      }));
     }
+    
+    setProfitFormData(updatedFormData);
     
     if (profitFormErrors[name]) {
       setProfitFormErrors({
@@ -285,48 +282,98 @@ const Dividends = () => {
   const validateProfitForm = () => {
     const errors = {};
     
-    if (!profitFormData.quarterEndDate) {
-      errors.quarterEndDate = 'Quarter end date is required';
-    }
-    
-    if (!profitFormData.incomeAmount) {
-      errors.incomeAmount = 'Income amount is required';
-    } else if (isNaN(profitFormData.incomeAmount) || Number(profitFormData.incomeAmount) < 0) {
-      errors.incomeAmount = 'Enter a valid income amount';
+    if (!profitFormData.incomeAmount || profitFormData.incomeAmount <= 0) {
+      errors.incomeAmount = 'Please enter a valid income amount';
     }
     
     if (!profitFormData.expenseAmount) {
-      errors.expenseAmount = 'Expense amount is required';
+      errors.expenseAmount = '0 for no expenses or enter valid amount';
     } else if (isNaN(profitFormData.expenseAmount) || Number(profitFormData.expenseAmount) < 0) {
-      errors.expenseAmount = 'Enter a valid expense amount';
+      errors.expenseAmount = 'Expense amount cannot be negative';
     }
     
-    if (profitFormData.profitAmount < 0) {
-      errors.profitAmount = 'Total expenses cannot exceed income';
+    if (!profitFormData.dividendRate) {
+      errors.dividendRate = 'Dividend rate is required';
+    } else if (isNaN(profitFormData.dividendRate) || Number(profitFormData.dividendRate) <= 0 || Number(profitFormData.dividendRate) > 100) {
+      errors.dividendRate = 'Enter a valid dividend rate (0-100%)';
     }
     
     setProfitFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
+  const calculateProportionalDividends = async () => {
+    if (!validateProfitForm()) return;
+    
+    try {
+      const params = {
+        quarterlyProfit: Number(profitFormData.profitAmount),
+        dividendRate: Number(profitFormData.dividendRate)
+      };
+      
+      const result = await api.calculateProportionalDividends(params);
+      
+      // Get organization assets
+      const assets = await api.calculateOrgAssets();
+      setOrgAssets(assets);
+      
+      // Set dividend distribution
+      setDividendDistribution(result.dividends);
+      
+      return result;
+    } catch (error) {
+      console.error("Error calculating proportional dividends:", error);
+      setSnackbar({
+        open: true,
+        message: 'Error calculating proportional dividends: ' + error.message,
+        severity: 'error'
+      });
+      return null;
+    }
+  };
+
+  const handleCalculateProportionalDividends = async () => {
+    await calculateProportionalDividends();
+  };
+
   const handleCalculateProfitsSubmit = async () => {
     if (!validateProfitForm()) return;
     
     try {
-      const profitData = {
+      // First calculate the proportional dividends
+      const proportionalResult = await calculateProportionalDividends();
+      
+      if (!proportionalResult) return;
+      
+      // Create the dividend entry
+      const dividendData = {
         quarterEndDate: profitFormData.quarterEndDate,
-        incomeAmount: Number(profitFormData.incomeAmount),
-        expenseAmount: Number(profitFormData.expenseAmount),
-        profitAmount: profitFormData.profitAmount,
-        dividendRate: profitFormData.dividendRate,
-        activeMembers: members.length
+        totalShares: members.reduce((sum, m) => sum + (m.shares || 0), 0),
+        profitAmount: Number(profitFormData.profitAmount),
+        dividendRate: Number(profitFormData.dividendRate),
+        calculationDate: new Date().toISOString().split('T')[0]
       };
       
-      await api.addDividend(profitData);
+      // Add the dividend to the database
+      const addedDividend = await api.addDividend(dividendData);
+      
+      // For each member in the dividend distribution, create a dividend payment
+      for (const memberDividend of proportionalResult.dividends) {
+        if (memberDividend.dividendAmount > 0) {
+          await api.addDividendPayment({
+            dividendId: addedDividend.id,
+            memberId: memberDividend.memberId,
+            shares: members.find(m => m.id === memberDividend.memberId)?.shares || 0,
+            amount: memberDividend.dividendAmount,
+            status: 'processed',
+            paymentDate: new Date().toISOString().split('T')[0]
+          });
+        }
+      }
       
       setSnackbar({
         open: true,
-        message: 'Profit calculated and dividend entry added successfully',
+        message: 'Profit calculated and dividend payments processed successfully',
         severity: 'success'
       });
       
@@ -346,6 +393,97 @@ const Dividends = () => {
     setSnackbar({ ...snackbar, open: false });
   };
 
+  // Add function to auto-populate the form with current quarter data
+  const autoPopulateQuarterlyData = () => {
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth();
+    let currentQuarter = Math.floor(currentMonth / 3) + 1;
+    
+    // For quarter end date - last day of the quarter
+    const quarterEndMonth = currentQuarter * 3 - 1;
+    const quarterEndDate = new Date(currentYear, quarterEndMonth + 1, 0);
+    
+    // Format date as YYYY-MM-DD for input field
+    const formattedDate = quarterEndDate.toISOString().split('T')[0];
+    
+    // Default dividend rate
+    const defaultDividendRate = 8.5;
+    
+    setProfitFormData({
+      ...profitFormData,
+      quarter: currentQuarter,
+      year: currentYear,
+      endDate: formattedDate,
+      dividendRate: defaultDividendRate
+    });
+    
+    // Try to fetch financial data for this quarter
+    fetchQuarterlyFinancialData(currentQuarter, currentYear);
+  };
+  
+  // Fetch quarterly financial data (income, expenses) if available
+  const fetchQuarterlyFinancialData = async (quarter, year) => {
+    try {
+      setLoading(true);
+      // You would implement an API call here to get the quarterly data
+      // For now, we'll simulate it with some logic
+      
+      // Example calculation based on cashbook entries
+      const startDate = new Date(year, (quarter - 1) * 3, 1);
+      const endMonth = quarter * 3 - 1;
+      const endDate = new Date(year, endMonth + 1, 0);
+      
+      // Format dates for filtering
+      const formattedStartDate = startDate.toISOString().split('T')[0];
+      const formattedEndDate = endDate.toISOString().split('T')[0];
+      
+      // Get cashbook entries for the quarter to estimate income and expenses
+      const cashEntries = await api.getCashbookEntriesByDateRange(formattedStartDate, formattedEndDate);
+      
+      let totalIncome = 0;
+      let totalExpenses = 0;
+      
+      if (cashEntries && cashEntries.length > 0) {
+        cashEntries.forEach(entry => {
+          if (entry.type === 'income' || entry.type === 'deposit') {
+            totalIncome += parseFloat(entry.amount);
+          } else if (entry.type === 'expense' || entry.type === 'withdrawal') {
+            totalExpenses += parseFloat(entry.amount);
+          }
+        });
+      }
+      
+      // Round to 2 decimal places
+      totalIncome = Math.round(totalIncome * 100) / 100;
+      totalExpenses = Math.round(totalExpenses * 100) / 100;
+      const profit = totalIncome - totalExpenses;
+      
+      setProfitFormData(prevData => ({
+        ...prevData,
+        incomeAmount: totalIncome,
+        expenseAmount: totalExpenses,
+        profitAmount: profit
+      }));
+      
+    } catch (error) {
+      console.error("Error fetching quarterly financial data:", error);
+      setSnackbar({
+        open: true,
+        message: 'Error fetching quarterly financial data: ' + error.message,
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update the openCalculateProfitsDialog function to auto-populate data
+  const openCalculateProfitsDialog = () => {
+    setCalculateProfitsOpen(true);
+    autoPopulateQuarterlyData();
+  };
+
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
@@ -354,17 +492,10 @@ const Dividends = () => {
           <Button
             variant="contained"
             startIcon={<CalculateOutlined />}
-            onClick={handleCalculateProfitsOpen}
+            onClick={openCalculateProfitsDialog}
             sx={{ mr: 2 }}
           >
             Calculate Profits
-          </Button>
-          <Button
-            variant="contained"
-            startIcon={<SavingsOutlined />}
-            onClick={handleAddDividendOpen}
-          >
-            Add Dividend
           </Button>
         </Box>
       </Box>
@@ -520,80 +651,142 @@ const Dividends = () => {
       </Dialog>
 
       {/* Calculate Profits Dialog */}
-      <Dialog open={calculateProfitsOpen} onClose={handleCalculateProfitsClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Calculate Quarterly Profits</DialogTitle>
+      <Dialog open={calculateProfitsOpen} onClose={handleCalculateProfitsClose} maxWidth="md" fullWidth>
+        <DialogTitle>Calculate Quarterly Profits & Dividends</DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid container spacing={3}>
             <Grid item xs={12}>
+              <Typography variant="subtitle1" gutterBottom>
+                This will automatically calculate dividends based on each member's proportional assets.
+              </Typography>
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
               <TextField
-                fullWidth
                 label="Quarter End Date"
-                name="quarterEndDate"
                 type="date"
-                value={profitFormData.quarterEndDate}
+                name="endDate"
+                value={profitFormData.endDate}
                 onChange={handleProfitInputChange}
-                error={!!profitFormErrors.quarterEndDate}
-                helperText={profitFormErrors.quarterEndDate}
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
                 fullWidth
-                label="Income Amount"
-                name="incomeAmount"
-                value={profitFormData.incomeAmount}
-                onChange={handleProfitInputChange}
-                error={!!profitFormErrors.incomeAmount}
-                helperText={profitFormErrors.incomeAmount}
-                InputProps={{
-                  startAdornment: <InputAdornment position="start">Rs.</InputAdornment>
+                InputLabelProps={{
+                  shrink: true,
                 }}
               />
             </Grid>
-            <Grid item xs={12}>
+            
+            <Grid item xs={12} sm={6}>
               <TextField
-                fullWidth
-                label="Expense Amount"
-                name="expenseAmount"
-                value={profitFormData.expenseAmount}
-                onChange={handleProfitInputChange}
-                error={!!profitFormErrors.expenseAmount}
-                helperText={profitFormErrors.expenseAmount}
-                InputProps={{
-                  startAdornment: <InputAdornment position="start">Rs.</InputAdornment>
-                }}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Profit Amount"
-                name="profitAmount"
-                value={profitFormData.profitAmount}
-                disabled
-                InputProps={{
-                  startAdornment: <InputAdornment position="start">Rs.</InputAdornment>
-                }}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
                 label="Dividend Rate (%)"
+                type="number"
                 name="dividendRate"
                 value={profitFormData.dividendRate}
                 onChange={handleProfitInputChange}
+                fullWidth
                 InputProps={{
-                  endAdornment: <InputAdornment position="end">%</InputAdornment>
+                  endAdornment: <InputAdornment position="end">%</InputAdornment>,
                 }}
               />
             </Grid>
+            
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="Income Amount"
+                type="number"
+                name="incomeAmount"
+                value={profitFormData.incomeAmount}
+                onChange={handleProfitInputChange}
+                fullWidth
+                InputProps={{
+                  startAdornment: <InputAdornment position="start">Rs.</InputAdornment>,
+                }}
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="Expense Amount"
+                type="number"
+                name="expenseAmount"
+                value={profitFormData.expenseAmount}
+                onChange={handleProfitInputChange}
+                fullWidth
+                InputProps={{
+                  startAdornment: <InputAdornment position="start">Rs.</InputAdornment>,
+                }}
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="Profit Amount"
+                type="number"
+                name="profitAmount"
+                value={profitFormData.profitAmount}
+                onChange={handleProfitInputChange}
+                fullWidth
+                disabled
+                InputProps={{
+                  startAdornment: <InputAdornment position="start">Rs.</InputAdornment>,
+                }}
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <Button 
+                variant="outlined" 
+                color="primary" 
+                onClick={handleCalculateProportionalDividends}
+                sx={{ mb: 2 }}
+              >
+                Preview Dividend Distribution
+              </Button>
+            </Grid>
           </Grid>
+          
+          {dividendDistribution.length > 0 && (
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Dividend Distribution Preview
+              </Typography>
+              <Typography variant="body2" gutterBottom>
+                Total Organization Assets: {formatCurrency(orgAssets.totalAssets)}
+              </Typography>
+              <Typography variant="body2" gutterBottom>
+                Total Dividend Amount: {formatCurrency(dividendDistribution.reduce((total, item) => total + item.dividendAmount, 0))}
+              </Typography>
+              <TableContainer component={Paper} sx={{ mt: 2 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Member</TableCell>
+                      <TableCell align="right">Assets</TableCell>
+                      <TableCell align="right">Proportion</TableCell>
+                      <TableCell align="right">Dividend Amount</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {dividendDistribution.map((item) => (
+                      <TableRow key={item.memberId}>
+                        <TableCell>{item.memberName}</TableCell>
+                        <TableCell align="right">{formatCurrency(item.memberAssets)}</TableCell>
+                        <TableCell align="right">{(item.proportion * 100).toFixed(2)}%</TableCell>
+                        <TableCell align="right">{formatCurrency(item.dividendAmount)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCalculateProfitsClose}>Cancel</Button>
-          <Button onClick={handleCalculateProfitsSubmit} variant="contained">
+          <Button 
+            onClick={handleCalculateProfitsSubmit} 
+            variant="contained"
+            disabled={dividendDistribution.length === 0}
+          >
             Calculate & Add
           </Button>
         </DialogActions>

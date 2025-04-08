@@ -976,10 +976,31 @@ ipcMain.handle('add-dividend', async (event, dividend) => {
   });
 });
 
+ipcMain.handle('add-dividend-payment', async (event, payment) => {
+  return new Promise((resolve, reject) => {
+    const { dividendId, memberId, shares, amount, status, paymentDate } = payment;
+    db.run(
+      'INSERT INTO dividend_payments (dividendId, memberId, shares, amount, status, paymentDate) VALUES (?, ?, ?, ?, ?, ?)',
+      [dividendId, memberId, shares, amount, status, paymentDate],
+      function(err) {
+        if (err) reject(err);
+        else {
+          const paymentId = this.lastID;
+          resolve({ id: paymentId, ...payment });
+        }
+      }
+    );
+  });
+});
+
 ipcMain.handle('get-dividend-payments', async (event, dividendId) => {
   return new Promise((resolve, reject) => {
-    db.all('SELECT dp.*, m.name as memberName FROM dividend_payments dp JOIN members m ON dp.memberId = m.id WHERE dp.dividendId = ?', 
-      [dividendId], 
+    db.all(
+      `SELECT dp.*, m.name as memberName FROM dividend_payments dp
+       JOIN members m ON dp.memberId = m.id
+       WHERE dp.dividendId = ?
+       ORDER BY dp.paymentDate DESC`,
+      [dividendId],
       (err, rows) => {
         if (err) reject(err);
         else resolve(rows);
@@ -1235,5 +1256,166 @@ ipcMain.handle('restore-database', async (event, filePath) => {
   });
 });
 
+// ORGANIZATION ASSET CALCULATION
+ipcMain.handle('calculate-org-assets', async () => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Get total cash contributions
+      const cashContributions = await new Promise((resolve, reject) => {
+        db.get('SELECT SUM(amount) as total FROM cashbook', (err, result) => {
+          if (err) reject(err);
+          else resolve(result?.total || 0);
+        });
+      });
+
+      // Get total bank balances
+      const bankBalances = await new Promise((resolve, reject) => {
+        db.get('SELECT SUM(balance) as total FROM bank_accounts', (err, result) => {
+          if (err) reject(err);
+          else resolve(result?.total || 0);
+        });
+      });
+
+      // Get total outstanding loans
+      const outstandingLoans = await new Promise((resolve, reject) => {
+        db.get('SELECT SUM(balance) as total FROM loans WHERE status = "active"', (err, result) => {
+          if (err) reject(err);
+          else resolve(result?.total || 0);
+        });
+      });
+
+      // Get total accumulated dividends
+      const totalDividends = await new Promise((resolve, reject) => {
+        db.get('SELECT SUM(profitAmount) as total FROM dividends', (err, result) => {
+          if (err) reject(err);
+          else resolve(result?.total || 0);
+        });
+      });
+
+      // Sum up all assets
+      const totalAssets = cashContributions + bankBalances + outstandingLoans;
+
+      resolve({
+        cashContributions,
+        bankBalances,
+        outstandingLoans,
+        totalDividends,
+        totalAssets
+      });
+    } catch (error) {
+      console.error('Error calculating organization assets:', error);
+      reject(error);
+    }
+  });
+});
+
+// PROPORTIONAL DIVIDEND CALCULATION
+ipcMain.handle('calculate-proportional-dividends', async (event, { quarterlyProfit, dividendRate }) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Calculate the dividend pool from quarterly profit
+      const dividendPool = quarterlyProfit * (dividendRate / 100);
+      
+      // Get all active members
+      const activeMembers = await new Promise((resolve, reject) => {
+        db.all('SELECT * FROM members WHERE status = "active"', (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
+        });
+      });
+      
+      // Get total org assets
+      const orgAssets = await ipcMain.handle('calculate-org-assets');
+      
+      // Calculate dividend for each member based on their proportion of the total assets
+      const dividends = await Promise.all(activeMembers.map(async (member) => {
+        // Calculate member's total assets
+        const memberAssets = await new Promise((resolve, reject) => {
+          db.get(`
+            SELECT 
+              COALESCE(SUM(c.amount), 0) as cashTotal,
+              COALESCE(SUM(d.amount), 0) as dividendTotal
+            FROM members m
+            LEFT JOIN cashbook c ON m.id = c.memberId
+            LEFT JOIN dividend_payments d ON m.id = d.memberId
+            WHERE m.id = ?
+          `, [member.id], (err, result) => {
+            if (err) reject(err);
+            else {
+              const totalAsset = (result?.cashTotal || 0) + (result?.dividendTotal || 0);
+              resolve(totalAsset);
+            }
+          });
+        });
+        
+        // Calculate proportion
+        const proportion = orgAssets.totalAssets > 0 ? memberAssets / orgAssets.totalAssets : 0;
+        
+        // Calculate dividend amount based on proportion
+        const dividendAmount = proportion * dividendPool;
+        
+        return {
+          memberId: member.id,
+          memberName: member.name,
+          memberAssets: memberAssets,
+          proportion: proportion,
+          dividendAmount: dividendAmount
+        };
+      }));
+      
+      // Total calculated to verify
+      const totalCalculatedDividend = dividends.reduce((sum, div) => sum + div.dividendAmount, 0);
+      
+      resolve({
+        quarterlyProfit,
+        dividendRate,
+        dividendPool,
+        totalOrganizationAssets: orgAssets.totalAssets,
+        dividends,
+        totalCalculatedDividend
+      });
+    } catch (error) {
+      console.error('Error calculating proportional dividends:', error);
+      reject(error);
+    }
+  });
+});
+
 // Export functions for testing
-module.exports = { createWindow, createDatabase }; 
+module.exports = { createWindow, createDatabase };
+
+ipcMain.handle('get-cashbook-entries', async () => {
+  return new Promise((resolve, reject) => {
+    db.all('SELECT * FROM cashbook ORDER BY date DESC', (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows);
+    });
+  });
+});
+
+ipcMain.handle('get-cashbook-entries-by-date-range', async (event, startDate, endDate) => {
+  return new Promise((resolve, reject) => {
+    db.all(
+      'SELECT * FROM cashbook WHERE date >= ? AND date <= ? ORDER BY date DESC',
+      [startDate, endDate],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      }
+    );
+  });
+});
+
+ipcMain.handle('add-cashbook-entry', async (event, entry) => {
+  return new Promise((resolve, reject) => {
+    const { date, type, category, amount, description, memberId } = entry;
+    db.run(
+      'INSERT INTO cashbook (date, type, category, amount, description, memberId) VALUES (?, ?, ?, ?, ?, ?)',
+      [date, type, category, amount, description, memberId || null],
+      function(err) {
+        if (err) reject(err);
+        else resolve({ id: this.lastID, ...entry });
+      }
+    );
+  });
+}); 

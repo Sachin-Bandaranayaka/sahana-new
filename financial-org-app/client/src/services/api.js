@@ -214,6 +214,14 @@ const api = {
     return await window.api.getDividendPayments(dividendId);
   },
   
+  addDividendPayment: async (payment) => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.addDividendPayment(payment);
+  },
+  
   updateDividendPayment: async (id, payment) => {
     if (!isElectron) {
       throw new Error('This application requires Electron to access the database');
@@ -230,6 +238,31 @@ const api = {
     }
     
     return await window.api.getDashboardData();
+  },
+  
+  // Calculations
+  calculateMemberAsset: async (memberId) => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.calculateMemberAsset(memberId);
+  },
+  
+  calculateOrgAssets: async () => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.calculateOrgAssets();
+  },
+  
+  calculateProportionalDividends: async (params) => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.calculateProportionalDividends(params);
   },
   
   // Settings
@@ -269,6 +302,30 @@ const api = {
   // Helper function to format currency in LKR
   formatCurrency: (amount) => {
     return `Rs. ${Number(amount).toLocaleString('en-LK')}`;
+  },
+  
+  getCashbookEntries: async () => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.getCashbookEntries();
+  },
+  
+  getCashbookEntriesByDateRange: async (startDate, endDate) => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.getCashbookEntriesByDateRange(startDate, endDate);
+  },
+  
+  addCashbookEntry: async (entry) => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.addCashbookEntry(entry);
   }
 };
 
