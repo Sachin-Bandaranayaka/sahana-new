@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld(
   'api', {
     // Member operations
     getMembers: () => ipcRenderer.invoke('get-members'),
+    getMember: (id) => ipcRenderer.invoke('get-member', id),
     addMember: (member) => ipcRenderer.invoke('add-member', member),
     
     // Cash book operations

@@ -18,6 +18,7 @@ async function setupDatabase() {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS members (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      member_id TEXT NOT NULL,
       name TEXT NOT NULL,
       address TEXT,
       contact TEXT,
@@ -213,27 +214,55 @@ app.on('activate', () => {
 
 // IPC Handlers for database operations
 ipcMain.handle('get-members', async () => {
-  return await db.all('SELECT * FROM members');
+  return await db.all('SELECT * FROM members ORDER BY name');
+});
+
+ipcMain.handle('get-member', async (event, memberId) => {
+  // First try to find by numeric ID
+  let member = await db.get('SELECT * FROM members WHERE id = ?', memberId);
+  
+  // If not found and memberId is a string, try finding by member_id
+  if (!member && typeof memberId === 'string') {
+    member = await db.get('SELECT * FROM members WHERE member_id = ?', memberId);
+  }
+  
+  return member;
 });
 
 ipcMain.handle('add-member', async (event, member) => {
   const result = await db.run(
-    'INSERT INTO members (name, address, contact, joined_date) VALUES (?, ?, ?, ?)',
-    member.name, member.address, member.contact, member.joined_date
+    'INSERT INTO members (member_id, name, address, phone, email, joinDate, shares, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    member.member_id, member.name, member.address, member.phone, member.email, member.joinDate, member.shares || 0, member.status || 'active'
   );
   return { id: result.lastID, ...member };
 });
 
-ipcMain.handle('get-cash-book', async (event, memberId) => {
-  return await db.all('SELECT * FROM cash_book WHERE member_id = ?', memberId);
+ipcMain.handle('update-member', async (event, id, member) => {
+  await db.run(
+    'UPDATE members SET member_id = ?, name = ?, address = ?, phone = ?, email = ?, joinDate = ?, shares = ?, status = ? WHERE id = ?',
+    member.member_id, member.name, member.address, member.phone, member.email, member.joinDate, member.shares || 0, member.status || 'active', id
+  );
+  return { id, ...member };
 });
 
-ipcMain.handle('add-cash-entry', async (event, entry) => {
-  const result = await db.run(
-    'INSERT INTO cash_book (member_id, date, description, amount) VALUES (?, ?, ?, ?)',
-    entry.member_id, entry.date, entry.description, entry.amount
-  );
-  return { id: result.lastID, ...entry };
+ipcMain.handle('delete-member', async (event, id) => {
+  await db.run('DELETE FROM members WHERE id = ?', id);
+  return { success: true };
+});
+
+ipcMain.handle('get-member-transactions', async (event, memberId) => {
+  // Fetch all types of transactions for a member (cash, loans, dividends)
+  const cashEntries = await db.all('SELECT id, date, description, amount, "cash" as type FROM cashbook WHERE memberId = ?', memberId);
+  const loanEntries = await db.all('SELECT id, date, amount as amount, "loan" as type FROM loans WHERE memberId = ?', memberId);
+  const dividendEntries = await db.all('SELECT id, date, amount as amount, "dividend" as type FROM dividend_payments WHERE memberId = ?', memberId);
+  
+  // Combine all transactions and sort by date
+  const allTransactions = [...cashEntries, ...loanEntries, ...dividendEntries];
+  return allTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+});
+
+ipcMain.handle('get-cash-book', async (event, memberId) => {
+  return await db.all('SELECT * FROM cash_book WHERE member_id = ?', memberId);
 });
 
 ipcMain.handle('get-cash-entries', async (event, dateRange) => {
@@ -472,40 +501,6 @@ ipcMain.handle('calculate-quarterly-profit', async (event, quarter, year) => {
   };
 });
 
-ipcMain.handle('get-member-transactions', async (event, params) => {
-  const { memberId, startDate, endDate } = params;
-  
-  // Get cash book entries
-  const cashEntries = await db.all(
-    'SELECT id, date, description, amount, "CASH" as type FROM cash_book WHERE member_id = ? AND date >= ? AND date <= ?',
-    memberId, startDate, endDate
-  );
-  
-  // Get loan entries
-  const loanEntries = await db.all(
-    'SELECT id, date, loan_type as description, -amount_taken as amount, "LOAN" as type FROM loan_book WHERE member_id = ? AND date >= ? AND date <= ?',
-    memberId, startDate, endDate
-  );
-  
-  // Get loan payments
-  const loanPayments = await db.all(
-    `SELECT id, loan_interest + loan_premium as amount, date, "Loan repayment" as description, "PAYMENT" as type 
-     FROM loan_book 
-     WHERE member_id = ? AND date >= ? AND date <= ? AND (loan_interest > 0 OR loan_premium > 0)`,
-    memberId, startDate, endDate
-  );
-  
-  // Get dividend entries
-  const dividendEntries = await db.all(
-    'SELECT id, date, description, total as amount, "DIVIDEND" as type FROM dividend_book WHERE member_id = ? AND date >= ? AND date <= ?',
-    memberId, startDate, endDate
-  );
-  
-  // Combine all transactions and sort by date
-  return [...cashEntries, ...loanEntries, ...loanPayments, ...dividendEntries]
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
-});
-
 ipcMain.handle('get-quarterly-profit', async (event, params) => {
   const { startDate, endDate } = params;
   
@@ -712,8 +707,8 @@ ipcMain.handle('restore-data', async (event, filePath) => {
     // Restore members
     for (const member of backup.members) {
       await db.run(
-        'INSERT INTO members (id, name, address, contact, joined_date) VALUES (?, ?, ?, ?, ?)',
-        member.id, member.name, member.address, member.contact, member.joined_date
+        'INSERT INTO members (id, member_id, name, address, contact, joined_date) VALUES (?, ?, ?, ?, ?, ?)',
+        member.id, member.member_id, member.name, member.address, member.contact, member.joined_date
       );
     }
     

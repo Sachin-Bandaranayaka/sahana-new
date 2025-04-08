@@ -54,21 +54,21 @@ graph LR
 
 ### 3. Dividends
 
-Dividends are portions of profit distributed to members based on their share ownership.
+Dividends are portions of profit distributed to members of the organization.
 
-#### Dividend Calculation
+#### Current Dividend Calculation
 
 - **Dividend Pool** = Quarterly Profit × Dividend Rate (e.g., 8.5%)
-- **Dividend Per Share** = Dividend Pool / Total Shares
-- **Member Dividend** = Member Shares × Dividend Per Share
+- **Per Member Dividend** = Dividend Pool / Number of Active Members
+
+This is a simplification of the traditional dividend model where all active members receive an equal share of the profits, regardless of their share ownership.
 
 ```mermaid
 flowchart TD
     A[Quarterly Profit] -->|Apply Dividend Rate| B[Dividend Pool]
-    C[Total Shares] --> D[Dividend Per Share]
+    C[Number of Active Members] --> D[Dividend Per Member]
     B --> D
     D --> E[Individual Member Dividends]
-    F[Member Shares] --> E
 ```
 
 ### 4. Loans
@@ -110,7 +110,7 @@ sequenceDiagram
     B->>D: Calculate Quarterly Profit
     C->>D: Subtract Expenses
     D->>E: Calculate Dividend Pool (Profit × Rate)
-    E->>F: Distribute Dividends Based on Shares
+    E->>F: Distribute Dividends Equally to Active Members
 ```
 
 ### Loan Issuance and Repayment
@@ -131,9 +131,9 @@ sequenceDiagram
 
 ## How These Components Affect Each Other
 
-### 1. Share and Dividend Relationship
+### 1. Members and Dividend Relationship
 
-The number of shares a member owns directly determines their portion of distributed dividends. More shares means a larger dividend payment.
+In the current implementation, all active members receive an equal portion of the dividend pool, which is calculated from the quarterly profit multiplied by the dividend rate.
 
 ### 2. Loans and Profit Relationship
 
@@ -152,9 +152,8 @@ graph TD
     D[Other Income] -->|increases| B
     E[Operational Expenses] -->|decreases| B
     B -->|determines| F[Dividend Pool]
-    G[Total Shares] -->|divides| F
-    F -->|results in| H[Dividend Per Share]
-    I[Member Shares] -->|multiplied by| H
+    G[Number of Active Members] -->|divides| F
+    F -->|results in| H[Dividend Per Member]
     H -->|equals| J[Member Dividend Payment]
 ```
 
@@ -165,13 +164,11 @@ graph TD
 Given:
 - Quarterly Profit: Rs. 100,000
 - Dividend Rate: 8.5%
-- Total Shares: 1,000
-- Member A owns 50 shares
+- Number of Active Members: 20
 
 Calculations:
 1. Dividend Pool = Rs. 100,000 × 8.5% = Rs. 8,500
-2. Dividend Per Share = Rs. 8,500 / 1,000 shares = Rs. 8.5 per share
-3. Member A's Dividend = 50 shares × Rs. 8.5 = Rs. 425
+2. Dividend Per Member = Rs. 8,500 / 20 members = Rs. 425 per member
 
 ### Loan Interest Calculation Example
 
@@ -187,4 +184,4 @@ Calculations:
 
 ## Conclusion
 
-The financial logic of this application creates a self-sustaining ecosystem where loan interest creates income, which generates profits, which are partially distributed as dividends to reward share ownership. This creates incentives for members to both own shares and repay loans on time, contributing to the organization's overall financial health. 
+The financial logic of this application creates a self-sustaining ecosystem where loan interest creates income, which generates profits, which are partially distributed as dividends to reward active membership. This creates incentives for members to both maintain active status and repay loans on time, contributing to the organization's overall financial health. 

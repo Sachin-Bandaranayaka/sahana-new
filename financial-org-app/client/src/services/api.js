@@ -21,6 +21,26 @@ const api = {
     return await window.api.getMembers();
   },
   
+  getMember: async (id) => {
+    console.log("getMember called, isElectron:", isElectron);
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    // Since there's no direct getMember in preload, use getMembers and filter by id
+    const members = await window.api.getMembers();
+    return members.find(member => member.id == id || member.member_id == id);
+  },
+  
+  getMemberTransactions: async (memberId) => {
+    console.log("getMemberTransactions called, isElectron:", isElectron);
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.getMemberTransactions(memberId);
+  },
+  
   addMember: async (member) => {
     if (!isElectron) {
       throw new Error('This application requires Electron to access the database');
@@ -210,6 +230,40 @@ const api = {
     }
     
     return await window.api.getDashboardData();
+  },
+  
+  // Settings
+  getSettings: async () => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.getSettings();
+  },
+  
+  updateSetting: async (setting) => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.updateSetting(setting);
+  },
+  
+  // Backup and Restore
+  backupData: async (filePath) => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.backupData(filePath);
+  },
+  
+  restoreData: async (filePath) => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.restoreData(filePath);
   },
   
   // Helper function to format currency in LKR

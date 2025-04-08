@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld(
       console.log('Calling getMembers from preload');
       return ipcRenderer.invoke('get-members');
     },
+    getMember: (memberId) => ipcRenderer.invoke('get-member', memberId),
+    getMemberTransactions: (memberId) => ipcRenderer.invoke('get-member-transactions', memberId),
     addMember: (member) => ipcRenderer.invoke('add-member', member),
     updateMember: (id, member) => ipcRenderer.invoke('update-member', id, member),
     deleteMember: (id) => ipcRenderer.invoke('delete-member', id),
