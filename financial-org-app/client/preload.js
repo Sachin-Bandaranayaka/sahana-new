@@ -58,8 +58,8 @@ contextBridge.exposeInMainWorld(
     },
     
     // Backup & Restore
-    backupDatabase: (path) => ipcRenderer.invoke('backup-database', path),
-    restoreDatabase: (path) => ipcRenderer.invoke('restore-database', path),
+    backupData: (path) => ipcRenderer.invoke('backup-database', path),
+    restoreData: (path) => ipcRenderer.invoke('restore-database', path),
     
     // Reports
     generateReport: (reportType, params) => ipcRenderer.invoke('generate-report', reportType, params)

@@ -256,8 +256,16 @@ ipcMain.handle('get-member-transactions', async (event, memberId) => {
   const loanEntries = await db.all('SELECT id, date, amount as amount, "loan" as type FROM loans WHERE memberId = ?', memberId);
   const dividendEntries = await db.all('SELECT id, date, amount as amount, "dividend" as type FROM dividend_payments WHERE memberId = ?', memberId);
   
+  // Fetch loan payments
+  const loanPayments = await db.all(`
+    SELECT p.id, p.date, p.note as description, p.amount, "loan_payment" as type 
+    FROM loan_payments p
+    JOIN loans l ON p.loanId = l.id
+    WHERE l.memberId = ?
+  `, memberId);
+  
   // Combine all transactions and sort by date
-  const allTransactions = [...cashEntries, ...loanEntries, ...dividendEntries];
+  const allTransactions = [...cashEntries, ...loanEntries, ...dividendEntries, ...loanPayments];
   return allTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
 });
 

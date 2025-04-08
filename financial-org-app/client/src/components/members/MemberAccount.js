@@ -16,8 +16,11 @@ import {
   Card,
   CardContent,
   Divider,
-  Chip
+  Chip,
+  Button,
+  IconButton
 } from '@mui/material';
+import { Refresh as RefreshIcon } from '@mui/icons-material';
 import api from '../../services/api';
 
 const MemberAccount = () => {
@@ -30,6 +33,14 @@ const MemberAccount = () => {
 
   useEffect(() => {
     fetchMemberData();
+    
+    // Set up polling to refresh data every 30 seconds
+    const intervalId = setInterval(() => {
+      fetchMemberData();
+    }, 30000);
+    
+    // Clean up interval on component unmount
+    return () => clearInterval(intervalId);
   }, [memberId]);
 
   const fetchMemberData = async () => {
@@ -86,7 +97,7 @@ const MemberAccount = () => {
 
   const calculateTotalLoanDeductions = () => {
     return transactions
-      .filter(t => t.type === 'loan_deduction')
+      .filter(t => t.type === 'loan_payment')
       .reduce((sum, t) => sum + t.amount, 0);
   };
 
@@ -110,9 +121,18 @@ const MemberAccount = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        Member Account
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h4" gutterBottom>
+          Member Account
+        </Typography>
+        <IconButton 
+          color="primary" 
+          onClick={fetchMemberData} 
+          title="Refresh Data"
+        >
+          <RefreshIcon />
+        </IconButton>
+      </Box>
 
       {/* Member Info Card */}
       <Card sx={{ mb: 3 }}>
