@@ -22,6 +22,11 @@ contextBridge.exposeInMainWorld(
     addLoan: (loan) => ipcRenderer.invoke('add-loan', loan),
     updateLoanPayment: (payment) => ipcRenderer.invoke('update-loan-payment', payment),
     
+    // Loan Types operations
+    getLoanTypes: () => ipcRenderer.invoke('get-loan-types'),
+    addLoanType: (loanType) => ipcRenderer.invoke('add-loan-type', loanType),
+    deleteLoanType: (id) => ipcRenderer.invoke('delete-loan-type', id),
+    
     // Dividend operations
     getDividendBook: (memberId) => ipcRenderer.invoke('get-dividend-book', memberId),
     addDividendEntry: (entry) => ipcRenderer.invoke('add-dividend-entry', entry),

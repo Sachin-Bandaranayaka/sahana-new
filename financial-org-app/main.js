@@ -50,6 +50,13 @@ async function setupDatabase() {
       FOREIGN KEY (member_id) REFERENCES members(id)
     );
     
+    CREATE TABLE IF NOT EXISTS loan_types (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      interest_rate REAL NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    
     CREATE TABLE IF NOT EXISTS dividend_book (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       member_id INTEGER,
@@ -1176,4 +1183,28 @@ ipcMain.handle('calculate-proportional-dividends', async (event, { quarterlyProf
       reject(error);
     }
   });
+});
+
+// Loan Types handlers
+ipcMain.handle('get-loan-types', async () => {
+  return await db.all('SELECT * FROM loan_types ORDER BY name');
+});
+
+ipcMain.handle('add-loan-type', async (event, loanType) => {
+  const result = await db.run(
+    'INSERT INTO loan_types (name, interest_rate) VALUES (?, ?)',
+    loanType.name, loanType.interestRate
+  );
+  return { id: result.lastID, ...loanType };
+});
+
+ipcMain.handle('delete-loan-type', async (event, id) => {
+  // First check if any loans are using this loan type
+  const loans = await db.all('SELECT COUNT(*) as count FROM loan_book WHERE loan_type = ?', id);
+  if (loans[0].count > 0) {
+    throw new Error('Cannot delete loan type that is in use');
+  }
+  
+  await db.run('DELETE FROM loan_types WHERE id = ?', id);
+  return { success: true };
 }); 
