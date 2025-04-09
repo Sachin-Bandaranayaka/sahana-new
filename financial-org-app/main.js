@@ -449,18 +449,51 @@ ipcMain.handle('update-setting', async (event, setting) => {
   return { success: true };
 });
 
+// MEMBER ASSET CALCULATION
 ipcMain.handle('calculate-member-asset', async (event, memberId) => {
-  // Get member's cash book total
-  const cashBookTotal = await db.get('SELECT SUM(amount) as total FROM cash_book WHERE member_id = ?', memberId);
-  
-  // Get member's dividend book total
-  const dividendTotal = await db.get('SELECT SUM(total) as total FROM dividend_book WHERE member_id = ?', memberId);
-  
-  return {
-    cashBookTotal: cashBookTotal.total || 0,
-    dividendTotal: dividendTotal.total || 0,
-    totalAsset: (cashBookTotal.total || 0) + (dividendTotal.total || 0)
-  };
+  return new Promise((resolve, reject) => {
+    try {
+      // First get member's cash book total
+      db.get(
+        `SELECT COALESCE(SUM(amount), 0) as cashTotal 
+         FROM cash_book 
+         WHERE member_id = ?`,
+        [memberId],
+        (err, cashResult) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+
+          // Then get member's dividend book total
+          db.get(
+            `SELECT COALESCE(SUM(total), 0) as dividendTotal 
+             FROM dividend_book 
+             WHERE member_id = ?`,
+            [memberId],
+            (err, dividendResult) => {
+              if (err) {
+                reject(err);
+                return;
+              }
+
+              const cashTotal = cashResult ? cashResult.cashTotal : 0;
+              const dividendTotal = dividendResult ? dividendResult.dividendTotal : 0;
+              const totalAsset = cashTotal + dividendTotal;
+
+              resolve({
+                cashTotal: cashTotal,
+                dividendTotal: dividendTotal,
+                totalAsset: totalAsset
+              });
+            }
+          );
+        }
+      );
+    } catch (error) {
+      reject(error);
+    }
+  });
 });
 
 ipcMain.handle('calculate-quarterly-profit', async (event, quarter, year) => {
@@ -984,4 +1017,141 @@ ipcMain.handle('generate-report', async (event, reportType, params) => {
     console.error('Error generating report:', error);
     return { success: false, message: error.message };
   }
+});
+
+// ORGANIZATION ASSETS CALCULATION
+ipcMain.handle('calculate-org-assets', async (event) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Calculate total cash contributions
+      const cashContributions = await db.get(
+        `SELECT COALESCE(SUM(amount), 0) as total FROM cash_book`
+      );
+      
+      // Calculate total bank balances
+      const bankBalances = await db.get(
+        `SELECT COALESCE(SUM(balance), 0) as total FROM organization_accounts`
+      );
+      
+      // Calculate total outstanding loans
+      const outstandingLoans = await db.get(
+        `SELECT COALESCE(SUM(total), 0) as total FROM loan_book WHERE is_active = 1`
+      );
+      
+      // Calculate total assets
+      const totalAssets = (cashContributions.total || 0) + 
+                          (bankBalances.total || 0) + 
+                          (outstandingLoans.total || 0);
+      
+      resolve({
+        cashContributions: cashContributions.total || 0,
+        bankBalances: bankBalances.total || 0,
+        outstandingLoans: outstandingLoans.total || 0,
+        totalAssets: totalAssets
+      });
+    } catch (error) {
+      console.error('Error calculating organization assets:', error);
+      reject(error);
+    }
+  });
+});
+
+// PROPORTIONAL DIVIDEND CALCULATION
+ipcMain.handle('calculate-proportional-dividends', async (event, { quarterlyProfit, dividendRate, quarter, year }) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Calculate the dividend pool from quarterly profit
+      const dividendPool = quarterlyProfit * (dividendRate / 100);
+      
+      // Get all active members
+      const activeMembers = await db.all('SELECT * FROM members WHERE status = "active"');
+      
+      // Calculate total organization assets directly
+      const cashContributions = await db.get(
+        `SELECT COALESCE(SUM(amount), 0) as total FROM cash_book`
+      );
+      
+      const bankBalances = await db.get(
+        `SELECT COALESCE(SUM(balance), 0) as total FROM organization_accounts`
+      );
+      
+      const outstandingLoans = await db.get(
+        `SELECT COALESCE(SUM(total), 0) as total FROM loan_book WHERE is_active = 1`
+      );
+      
+      const totalOrgAssets = (cashContributions.total || 0) + 
+                           (bankBalances.total || 0) + 
+                           (outstandingLoans.total || 0);
+      
+      const orgAssets = {
+        cashContributions: cashContributions.total || 0,
+        bankBalances: bankBalances.total || 0,
+        outstandingLoans: outstandingLoans.total || 0,
+        totalAssets: totalOrgAssets
+      };
+      
+      // Calculate dividend for each member based on their proportion of the total assets
+      const dividends = await Promise.all(activeMembers.map(async (member) => {
+        try {
+          // Calculate member's total assets directly
+          const cashResult = await db.get(
+            `SELECT COALESCE(SUM(amount), 0) as cashTotal 
+             FROM cash_book 
+             WHERE member_id = ?`,
+            [member.id]
+          );
+          
+          const dividendResult = await db.get(
+            `SELECT COALESCE(SUM(total), 0) as dividendTotal 
+             FROM dividend_book 
+             WHERE member_id = ?`,
+            [member.id]
+          );
+          
+          const cashTotal = cashResult ? cashResult.cashTotal : 0;
+          const dividendTotal = dividendResult ? dividendResult.dividendTotal : 0;
+          const memberAssets = cashTotal + dividendTotal;
+          
+          // Calculate proportion
+          const proportion = orgAssets.totalAssets > 0 ? memberAssets / orgAssets.totalAssets : 0;
+          
+          // Calculate dividend amount based on proportion
+          const dividendAmount = proportion * dividendPool;
+          
+          return {
+            memberId: member.id,
+            memberName: member.name,
+            memberAssets: memberAssets,
+            proportion: proportion,
+            dividendAmount: dividendAmount
+          };
+        } catch (error) {
+          console.error(`Error calculating dividend for member ${member.id}:`, error);
+          return {
+            memberId: member.id,
+            memberName: member.name,
+            memberAssets: 0,
+            proportion: 0,
+            dividendAmount: 0,
+            error: error.message
+          };
+        }
+      }));
+      
+      // Total calculated to verify
+      const totalCalculatedDividend = dividends.reduce((sum, div) => sum + (div.dividendAmount || 0), 0);
+      
+      resolve({
+        quarterlyProfit,
+        dividendRate,
+        dividendPool,
+        totalOrganizationAssets: orgAssets.totalAssets,
+        dividends,
+        totalCalculatedDividend
+      });
+    } catch (error) {
+      console.error('Error calculating proportional dividends:', error);
+      reject(error);
+    }
+  });
 }); 

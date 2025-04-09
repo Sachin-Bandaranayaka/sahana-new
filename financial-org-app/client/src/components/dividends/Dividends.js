@@ -27,7 +27,7 @@ import {
   Snackbar,
   Alert
 } from '@mui/material';
-import { SavingsOutlined, CalculateOutlined } from '@mui/icons-material';
+import { SavingsOutlined, CalculateOutlined, PersonOutline } from '@mui/icons-material';
 import api from '../../services/api';
 
 const Dividends = () => {
@@ -69,6 +69,12 @@ const Dividends = () => {
     open: false,
     message: '',
     severity: 'success'
+  });
+  const [memberDividendDialogOpen, setMemberDividendDialogOpen] = useState(false);
+  const [memberDividendData, setMemberDividendData] = useState([]);
+  const [selectedQuarter, setSelectedQuarter] = useState({
+    quarter: getCurrentQuarter(),
+    year: new Date().getFullYear()
   });
 
   function getCurrentQuarter() {
@@ -509,11 +515,147 @@ const Dividends = () => {
     autoPopulateQuarterlyData();
   };
 
+  // Add this new function to calculate member dividends for a specific quarter
+  const calculateMemberQuarterlyDividends = async () => {
+    setLoading(true);
+    try {
+      // Get all active members first
+      const activeMembers = members.filter(member => member.status === 'active');
+      
+      if (activeMembers.length === 0) {
+        setSnackbar({
+          open: true,
+          message: 'No active members found',
+          severity: 'warning'
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Get organization assets or use fallback
+      let assets = { totalAssets: 0 };
+      try {
+        assets = await api.calculateOrgAssets();
+      } catch (error) {
+        console.error('Error fetching organization assets:', error);
+        // Continue with fallback value for assets
+      }
+      
+      // Get the latest quarterly profit
+      const latestDividend = dividendData.dividendEntries[0];
+      const quarterlyProfit = latestDividend ? latestDividend.totalAmount : 0;
+      
+      if (quarterlyProfit <= 0) {
+        setSnackbar({
+          open: true,
+          message: 'No quarterly profit available for dividend calculation',
+          severity: 'warning'
+        });
+        setLoading(false);
+        return;
+      }
+      
+      // Calculate dividend for each member
+      const memberDividends = [];
+      let totalMemberAssets = 0;
+      
+      // First, try to calculate each member's assets
+      for (const member of activeMembers) {
+        try {
+          // Get member's total assets (cash + dividends) or use fallback
+          let memberAssets = { totalAsset: 0 };
+          try {
+            memberAssets = await api.calculateMemberAsset(member.id);
+          } catch (error) {
+            console.error(`Error calculating assets for member ${member.id}:`, error);
+            // Continue with fallback value
+          }
+          
+          totalMemberAssets += memberAssets.totalAsset || 0;
+          
+          memberDividends.push({
+            memberId: member.id,
+            memberName: member.name,
+            memberAssets: memberAssets.totalAsset || 0,
+            proportion: 0, // Calculate this after we have total
+            dividendAmount: 0 // Calculate this after we have proportion
+          });
+        } catch (error) {
+          console.error(`Error processing member ${member.id}:`, error);
+          // Continue with next member
+        }
+      }
+      
+      // If we couldn't get organization assets, use the sum of member assets
+      if (assets.totalAssets <= 0 && totalMemberAssets > 0) {
+        assets.totalAssets = totalMemberAssets;
+      }
+      
+      // Now calculate proportion and dividend for each member
+      for (const item of memberDividends) {
+        // Calculate member's proportion of total assets
+        const proportion = assets.totalAssets > 0 ? item.memberAssets / assets.totalAssets : 0;
+        
+        // Calculate member's dividend based on their proportion
+        const dividendAmount = quarterlyProfit * proportion;
+        
+        item.proportion = proportion;
+        item.dividendAmount = dividendAmount;
+      }
+      
+      setMemberDividendData(memberDividends);
+      setMemberDividendDialogOpen(true);
+      
+      if (memberDividends.length > 0) {
+        setSnackbar({
+          open: true,
+          message: 'Member dividends calculated successfully',
+          severity: 'success'
+        });
+      } else {
+        setSnackbar({
+          open: true,
+          message: 'No dividend data available for calculation',
+          severity: 'warning'
+        });
+      }
+    } catch (error) {
+      console.error('Error calculating member dividends:', error);
+      setSnackbar({
+        open: true,
+        message: 'Error calculating member dividends: ' + error.message,
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const handleMemberDividendDialogClose = () => {
+    setMemberDividendDialogOpen(false);
+  };
+  
+  const handleQuarterChange = (e) => {
+    const { name, value } = e.target;
+    setSelectedQuarter(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
         <Typography variant="h4">Dividends</Typography>
         <Box>
+          <Button
+            variant="contained"
+            startIcon={<PersonOutline />}
+            onClick={calculateMemberQuarterlyDividends}
+            sx={{ mr: 2 }}
+          >
+            Member Dividends
+          </Button>
           <Button
             variant="contained"
             startIcon={<CalculateOutlined />}
@@ -812,6 +954,83 @@ const Dividends = () => {
           >
             Calculate & Add
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Add this new dialog for member dividends */}
+      <Dialog open={memberDividendDialogOpen} onClose={handleMemberDividendDialogClose} maxWidth="md" fullWidth>
+        <DialogTitle>Member Quarterly Dividends</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={3}>
+            <Grid item xs={12}>
+              <Typography variant="subtitle1" gutterBottom>
+                This shows each member's dividend based on their proportion of total assets.
+              </Typography>
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Quarter</InputLabel>
+                <Select
+                  name="quarter"
+                  value={selectedQuarter.quarter}
+                  onChange={handleQuarterChange}
+                  label="Quarter"
+                >
+                  <MenuItem value={1}>Q1 (Jan-Mar)</MenuItem>
+                  <MenuItem value={2}>Q2 (Apr-Jun)</MenuItem>
+                  <MenuItem value={3}>Q3 (Jul-Sep)</MenuItem>
+                  <MenuItem value={4}>Q4 (Oct-Dec)</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Year</InputLabel>
+                <Select
+                  name="year"
+                  value={selectedQuarter.year}
+                  onChange={handleQuarterChange}
+                  label="Year"
+                >
+                  {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(year => (
+                    <MenuItem key={year} value={year}>{year}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            {memberDividendData.length > 0 && (
+              <Grid item xs={12}>
+                <TableContainer component={Paper} sx={{ mt: 2 }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Member</TableCell>
+                        <TableCell align="right">Total Assets</TableCell>
+                        <TableCell align="right">Asset Proportion</TableCell>
+                        <TableCell align="right">Dividend Amount</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {memberDividendData.map((item) => (
+                        <TableRow key={item.memberId}>
+                          <TableCell>{item.memberName}</TableCell>
+                          <TableCell align="right">{formatCurrency(item.memberAssets)}</TableCell>
+                          <TableCell align="right">{(item.proportion * 100).toFixed(2)}%</TableCell>
+                          <TableCell align="right">{formatCurrency(item.dividendAmount)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Grid>
+            )}
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleMemberDividendDialogClose}>Close</Button>
         </DialogActions>
       </Dialog>
 
