@@ -103,6 +103,31 @@ const api = {
     return await window.api.getLoans();
   },
   
+  // Loan Types
+  getLoanTypes: async () => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.getLoanTypes();
+  },
+  
+  addLoanType: async (loanType) => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.addLoanType(loanType);
+  },
+  
+  deleteLoanType: async (id) => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.deleteLoanType(id);
+  },
+  
   addLoan: async (loan) => {
     if (!isElectron) {
       throw new Error('This application requires Electron to access the database');

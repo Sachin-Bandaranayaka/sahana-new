@@ -136,6 +136,12 @@ function createTables() {
       role TEXT DEFAULT 'user',
       created_at TEXT,
       last_login TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS loan_types (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      interest_rate REAL NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )`
   ];
 
@@ -1570,5 +1576,77 @@ ipcMain.handle('add-cashbook-entry', async (event, entry) => {
         else resolve({ id: this.lastID, ...entry });
       }
     );
+  });
+});
+
+// Add Loan Types API handlers
+ipcMain.handle('get-loan-types', async () => {
+  return new Promise((resolve, reject) => {
+    db.all('SELECT * FROM loan_types ORDER BY name', (err, rows) => {
+      if (err) {
+        console.error('Error fetching loan types:', err);
+        reject(err);
+      } else {
+        console.log('Found loan types:', rows);
+        resolve(rows);
+      }
+    });
+  });
+});
+
+ipcMain.handle('add-loan-type', async (event, loanType) => {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'INSERT INTO loan_types (name, interest_rate) VALUES (?, ?)',
+      [loanType.name, loanType.interestRate],
+      function(err) {
+        if (err) {
+          console.error('Error adding loan type:', err);
+          reject(err);
+          return;
+        }
+        
+        const newId = this.lastID;
+        resolve({
+          id: newId,
+          name: loanType.name,
+          interest_rate: loanType.interestRate
+        });
+      }
+    );
+  });
+});
+
+ipcMain.handle('delete-loan-type', async (event, id) => {
+  return new Promise((resolve, reject) => {
+    // First check if any loans are using this loan type
+    db.get('SELECT COUNT(*) as count FROM loans WHERE loanTypeId = ?', [id], (err, row) => {
+      if (err) {
+        console.error('Error checking loan type usage:', err);
+        reject(err);
+        return;
+      }
+      
+      if (row && row.count > 0) {
+        reject(new Error('Cannot delete loan type that is in use'));
+        return;
+      }
+      
+      // If not in use, delete it
+      db.run('DELETE FROM loan_types WHERE id = ?', [id], function(err) {
+        if (err) {
+          console.error('Error deleting loan type:', err);
+          reject(err);
+          return;
+        }
+        
+        if (this.changes === 0) {
+          reject(new Error('Loan type not found'));
+          return;
+        }
+        
+        resolve({ success: true });
+      });
+    });
   });
 }); 

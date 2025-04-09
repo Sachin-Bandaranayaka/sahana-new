@@ -49,6 +49,7 @@ const Loans = () => {
     memberId: '',
     amount: '',
     interestRate: 8,
+    loanTypeId: '',
     startDate: '',
     endDate: '',
     purpose: '',
@@ -67,10 +68,12 @@ const Loans = () => {
     message: '',
     severity: 'success'
   });
+  const [loanTypes, setLoanTypes] = useState([]);
 
   useEffect(() => {
     fetchLoans();
     fetchMembers();
+    fetchLoanTypes();
   }, []);
 
   const fetchLoans = async () => {
@@ -99,6 +102,28 @@ const Loans = () => {
     }
   };
 
+  const fetchLoanTypes = async () => {
+    try {
+      const types = await api.getLoanTypes();
+      setLoanTypes(types);
+      
+      if (types.length > 0 && !formData.loanTypeId) {
+        setFormData(prev => ({
+          ...prev,
+          loanTypeId: types[0].id,
+          interestRate: types[0].interest_rate
+        }));
+      }
+    } catch (error) {
+      console.error("Error fetching loan types:", error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to load loan types',
+        severity: 'error'
+      });
+    }
+  };
+
   const handleChangePage = (event, newPage) => {
     setPage(newPage);
   };
@@ -118,6 +143,7 @@ const Loans = () => {
         memberId: loan.memberId,
         amount: loan.amount,
         interestRate: loan.interestRate,
+        loanTypeId: loan.loanTypeId || '',
         startDate: loan.startDate,
         endDate: loan.endDate || '',
         purpose: loan.purpose,
@@ -127,10 +153,12 @@ const Loans = () => {
       });
     } else {
       setCurrentLoan(null);
+      const defaultLoanType = loanTypes.length > 0 ? loanTypes[0] : null;
       setFormData({
         memberId: '',
         amount: '',
-        interestRate: 8,
+        interestRate: defaultLoanType ? defaultLoanType.interest_rate : 8,
+        loanTypeId: defaultLoanType ? defaultLoanType.id : '',
         startDate: new Date().toISOString().split('T')[0],
         endDate: '',
         purpose: '',
@@ -168,7 +196,6 @@ const Loans = () => {
       [name]: value
     });
     
-    // Clear validation error when field is edited
     if (formErrors[name]) {
       setFormErrors({
         ...formErrors,
@@ -192,12 +219,25 @@ const Loans = () => {
     });
   };
 
+  const handleLoanTypeChange = (e) => {
+    const selectedTypeId = e.target.value;
+    const selectedType = loanTypes.find(type => type.id === parseInt(selectedTypeId));
+    
+    if (selectedType) {
+      setFormData({
+        ...formData,
+        loanTypeId: selectedTypeId,
+        interestRate: selectedType.interest_rate
+      });
+    }
+  };
+
   const validateForm = () => {
     const errors = {};
     
     if (!formData.memberId) errors.memberId = 'Please select a member';
     if (!formData.amount || formData.amount <= 0) errors.amount = 'Please enter a valid amount';
-    if (!formData.interestRate || formData.interestRate < 0) errors.interestRate = 'Please enter a valid interest rate';
+    if (!formData.loanTypeId) errors.loanTypeId = 'Please select a loan type';
     if (!formData.startDate) errors.startDate = 'Start date is required';
     
     setFormErrors(errors);
@@ -228,11 +268,11 @@ const Loans = () => {
     
     try {
       if (editMode && currentLoan) {
-        // Update existing loan
         const updatedLoan = {
           ...formData,
           memberId: parseInt(formData.memberId),
           interestRate: parseFloat(formData.interestRate),
+          loanTypeId: parseInt(formData.loanTypeId),
           amount: parseFloat(formData.amount)
         };
         
@@ -243,11 +283,11 @@ const Loans = () => {
           severity: 'success'
         });
       } else {
-        // Add new loan
         const newLoan = {
           memberId: parseInt(formData.memberId),
           amount: parseFloat(formData.amount),
           interestRate: parseFloat(formData.interestRate),
+          loanTypeId: parseInt(formData.loanTypeId),
           startDate: formData.startDate,
           endDate: formData.endDate || null,
           purpose: formData.purpose,
@@ -263,7 +303,6 @@ const Loans = () => {
         });
       }
       
-      // Refresh loans after adding or updating
       fetchLoans();
       handleCloseDialog();
     } catch (error) {
@@ -294,7 +333,6 @@ const Loans = () => {
         severity: 'success'
       });
       
-      // Refresh loans after adding payment
       fetchLoans();
       handleClosePaymentDialog();
     } catch (error) {
@@ -318,7 +356,6 @@ const Loans = () => {
           severity: 'success'
         });
         
-        // Refresh loans after deletion
         fetchLoans();
       } catch (error) {
         console.error("Error deleting loan:", error);
@@ -467,7 +504,6 @@ const Loans = () => {
         </>
       )}
 
-      {/* Add/Edit Loan Dialog */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
         <DialogTitle>
           {editMode ? 'Edit Loan (ණය සංස්කරණය කරන්න)' : 'Add New Loan (නව ණය එකතු කරන්න)'}
@@ -536,23 +572,49 @@ const Loans = () => {
                 helperText="Repayment is flexible. Unpaid interest after 3 months will be deducted from dividends."
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} md={6}>
               <TextField
+                select
+                fullWidth
+                label="Loan Type"
+                name="loanTypeId"
+                value={formData.loanTypeId}
+                onChange={handleLoanTypeChange}
+                error={!!formErrors.loanTypeId}
+                helperText={formErrors.loanTypeId}
+                required
+                disabled={editMode}
+              >
+                {loanTypes.length === 0 ? (
+                  <MenuItem value="" disabled>
+                    No loan types available
+                  </MenuItem>
+                ) : (
+                  loanTypes.map((type) => (
+                    <MenuItem key={type.id} value={type.id}>
+                      {type.name} ({type.interest_rate}%)
+                    </MenuItem>
+                  ))
+                )}
+              </TextField>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Interest Rate"
                 name="interestRate"
-                label="Interest Rate % (පොලී අනුපාතය %)"
                 type="number"
                 value={formData.interestRate}
                 onChange={handleInputChange}
-                fullWidth
-                InputProps={{ 
+                InputProps={{
                   endAdornment: <InputAdornment position="end">%</InputAdornment>,
-                  inputProps: { min: 0, step: 0.5 }
+                  readOnly: !!formData.loanTypeId,
                 }}
-                error={!!formErrors.interestRate}
-                helperText={formErrors.interestRate}
+                disabled={!!formData.loanTypeId}
+                helperText={formData.loanTypeId ? "Set by loan type" : ""}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12}>
               <FormControlLabel
                 control={
                   <Switch
@@ -612,7 +674,6 @@ const Loans = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Add Payment Dialog */}
       <Dialog open={openPaymentDialog} onClose={handleClosePaymentDialog} maxWidth="sm" fullWidth>
         <DialogTitle>
           Add Payment (ගෙවීම් එකතු කරන්න)
@@ -677,7 +738,6 @@ const Loans = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar for notifications */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}

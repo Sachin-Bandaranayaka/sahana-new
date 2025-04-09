@@ -15,7 +15,18 @@ import {
   Alert,
   InputAdornment,
   CircularProgress,
-  Snackbar
+  Snackbar,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import {
   Save as SaveIcon,
@@ -24,7 +35,9 @@ import {
   Edit as EditIcon,
   Business as BusinessIcon,
   FolderOpen as FolderOpenIcon,
-  Lock as LockIcon
+  Lock as LockIcon,
+  Add as AddIcon,
+  Delete as DeleteIcon
 } from '@mui/icons-material';
 import api from '../../services/api';
 import ChangePassword from './ChangePassword';
@@ -43,8 +56,14 @@ const Settings = () => {
     taxId: '',
     quarterEndMonths: '',
     defaultInterestRate: '',
-    membershipFee: '',
-    shareValue: ''
+    membershipFee: ''
+  });
+  
+  const [loanTypes, setLoanTypes] = useState([]);
+  const [openLoanTypeDialog, setOpenLoanTypeDialog] = useState(false);
+  const [newLoanType, setNewLoanType] = useState({
+    name: '',
+    interestRate: ''
   });
   
   const [backupPath, setBackupPath] = useState('');
@@ -59,6 +78,7 @@ const Settings = () => {
   // Load settings when component mounts
   useEffect(() => {
     fetchSettings();
+    fetchLoanTypes();
   }, []);
 
   const fetchSettings = async () => {
@@ -82,8 +102,7 @@ const Settings = () => {
         taxId: settingsObj.taxId || '',
         quarterEndMonths: settingsObj.quarterEndMonths || '',
         defaultInterestRate: settingsObj.defaultLoanInterest || '10',
-        membershipFee: settingsObj.membershipFee || '1000',
-        shareValue: settingsObj.shareValue || '1000'
+        membershipFee: settingsObj.membershipFee || '1000'
       });
       
       setLoading(false);
@@ -98,6 +117,22 @@ const Settings = () => {
     }
   };
 
+  const fetchLoanTypes = async () => {
+    try {
+      // Implementation will depend on your API
+      // For now, we'll just use some dummy data
+      const response = await api.getLoanTypes();
+      setLoanTypes(response || []);
+    } catch (error) {
+      console.error("Error fetching loan types:", error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to load loan types: ' + error.message,
+        severity: 'error'
+      });
+    }
+  };
+
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
   };
@@ -106,6 +141,14 @@ const Settings = () => {
     const { name, value } = e.target;
     setOrgSettings({
       ...orgSettings,
+      [name]: value
+    });
+  };
+
+  const handleNewLoanTypeChange = (e) => {
+    const { name, value } = e.target;
+    setNewLoanType({
+      ...newLoanType,
       [name]: value
     });
   };
@@ -125,8 +168,7 @@ const Settings = () => {
         { name: 'taxId', value: orgSettings.taxId },
         { name: 'quarterEndMonths', value: orgSettings.quarterEndMonths },
         { name: 'defaultLoanInterest', value: orgSettings.defaultInterestRate },
-        { name: 'membershipFee', value: orgSettings.membershipFee },
-        { name: 'shareValue', value: orgSettings.shareValue }
+        { name: 'membershipFee', value: orgSettings.membershipFee }
       ];
       
       // Update each setting
@@ -149,6 +191,65 @@ const Settings = () => {
       });
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleOpenLoanTypeDialog = () => {
+    setNewLoanType({ name: '', interestRate: '' });
+    setOpenLoanTypeDialog(true);
+  };
+
+  const handleCloseLoanTypeDialog = () => {
+    setOpenLoanTypeDialog(false);
+  };
+
+  const handleAddLoanType = async () => {
+    if (!newLoanType.name || !newLoanType.interestRate) {
+      setSnackbar({
+        open: true,
+        message: 'Please fill in all fields',
+        severity: 'warning'
+      });
+      return;
+    }
+
+    try {
+      // Implementation will depend on your API
+      const addedLoanType = await api.addLoanType(newLoanType);
+      setLoanTypes([...loanTypes, addedLoanType]);
+      handleCloseLoanTypeDialog();
+      setSnackbar({
+        open: true,
+        message: 'Loan type added successfully',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error("Error adding loan type:", error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to add loan type: ' + error.message,
+        severity: 'error'
+      });
+    }
+  };
+
+  const handleDeleteLoanType = async (id) => {
+    try {
+      // Implementation will depend on your API
+      await api.deleteLoanType(id);
+      setLoanTypes(loanTypes.filter(loanType => loanType.id !== id));
+      setSnackbar({
+        open: true,
+        message: 'Loan type deleted successfully',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error("Error deleting loan type:", error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to delete loan type: ' + error.message,
+        severity: 'error'
+      });
     }
   };
 
@@ -259,6 +360,140 @@ const Settings = () => {
     });
   };
 
+  const renderFinancialSettings = () => {
+    return (
+      <Box>
+        <Alert severity="info" sx={{ mb: 3 }}>
+          These settings affect how calculations are performed throughout the application.
+        </Alert>
+        
+        <Grid container spacing={4}>
+          <Grid item xs={12} md={6}>
+            <TextField
+              label="Default Loan Interest Rate"
+              name="defaultInterestRate"
+              value={orgSettings.defaultInterestRate}
+              onChange={handleOrgInputChange}
+              fullWidth
+              InputProps={{
+                endAdornment: <InputAdornment position="end">%</InputAdornment>,
+              }}
+              disabled={!editMode}
+            />
+          </Grid>
+          
+          <Grid item xs={12} md={6}>
+            <TextField
+              label="Default Membership Fee"
+              name="membershipFee"
+              value={orgSettings.membershipFee}
+              onChange={handleOrgInputChange}
+              fullWidth
+              InputProps={{
+                startAdornment: <InputAdornment position="start">Rs.</InputAdornment>,
+              }}
+              disabled={!editMode}
+            />
+          </Grid>
+          
+          <Grid item xs={12}>
+            <Box sx={{ mt: 4, mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="h6">Loan Types</Typography>
+              {editMode && (
+                <Button 
+                  variant="contained" 
+                  color="primary" 
+                  startIcon={<AddIcon />}
+                  onClick={handleOpenLoanTypeDialog}
+                >
+                  Add Loan Type
+                </Button>
+              )}
+            </Box>
+            
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Name</TableCell>
+                    <TableCell>Interest Rate (%)</TableCell>
+                    {editMode && <TableCell align="right">Actions</TableCell>}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {loanTypes.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={editMode ? 3 : 2} align="center">
+                        No loan types defined
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    loanTypes.map((loanType) => (
+                      <TableRow key={loanType.id}>
+                        <TableCell>{loanType.name}</TableCell>
+                        <TableCell>{loanType.interestRate}%</TableCell>
+                        {editMode && (
+                          <TableCell align="right">
+                            <IconButton 
+                              color="error" 
+                              size="small"
+                              onClick={() => handleDeleteLoanType(loanType.id)}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Grid>
+        </Grid>
+        
+        {/* Dialog for adding new loan type */}
+        <Dialog open={openLoanTypeDialog} onClose={handleCloseLoanTypeDialog}>
+          <DialogTitle>Add New Loan Type</DialogTitle>
+          <DialogContent>
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12}>
+                <TextField
+                  label="Loan Type Name"
+                  name="name"
+                  value={newLoanType.name}
+                  onChange={handleNewLoanTypeChange}
+                  fullWidth
+                  required
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  label="Interest Rate"
+                  name="interestRate"
+                  value={newLoanType.interestRate}
+                  onChange={handleNewLoanTypeChange}
+                  fullWidth
+                  required
+                  type="number"
+                  InputProps={{
+                    endAdornment: <InputAdornment position="end">%</InputAdornment>,
+                  }}
+                />
+              </Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseLoanTypeDialog}>Cancel</Button>
+            <Button onClick={handleAddLoanType} variant="contained" color="primary">
+              Add
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </Box>
+    );
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}>
@@ -282,6 +517,7 @@ const Settings = () => {
           aria-label="settings tabs"
         >
           <Tab icon={<BusinessIcon />} label="Organization" />
+          <Tab icon={<SaveIcon />} label="Financial" />
           <Tab icon={<BackupIcon />} label="Backup & Restore" />
           <Tab icon={<LockIcon />} label="Security" />
         </Tabs>
@@ -403,54 +639,7 @@ const Settings = () => {
           <Divider sx={{ my: 4 }} />
           
           <Typography variant="h6" gutterBottom>Financial Settings</Typography>
-          <Alert severity="info" sx={{ mb: 2 }}>
-            These settings affect how calculations are performed throughout the application.
-          </Alert>
-          
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                label="Default Loan Interest Rate"
-                name="defaultInterestRate"
-                value={orgSettings.defaultInterestRate}
-                onChange={handleOrgInputChange}
-                disabled={!editMode || isProcessing}
-                margin="normal"
-                InputProps={{
-                  endAdornment: <InputAdornment position="end">%</InputAdornment>,
-                }}
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                label="Default Membership Fee"
-                name="membershipFee"
-                value={orgSettings.membershipFee}
-                onChange={handleOrgInputChange}
-                disabled={!editMode || isProcessing}
-                margin="normal"
-                InputProps={{
-                  startAdornment: <InputAdornment position="start">Rs.</InputAdornment>,
-                }}
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                label="Default Share Value"
-                name="shareValue"
-                value={orgSettings.shareValue}
-                onChange={handleOrgInputChange}
-                disabled={!editMode || isProcessing}
-                margin="normal"
-                InputProps={{
-                  startAdornment: <InputAdornment position="start">Rs.</InputAdornment>,
-                }}
-              />
-            </Grid>
-          </Grid>
+          {renderFinancialSettings()}
         </>
       )}
       

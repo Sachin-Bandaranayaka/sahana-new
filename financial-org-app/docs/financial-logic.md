@@ -226,15 +226,94 @@ Calculations:
 2. Monthly Payment = Rs. 56,000 / 12 = Rs. 4,667 per month
 3. Contribution to Income = Rs. 6,000 (over the life of the loan)
 
+## Risk Management and Financial Safeguards
+
+### 1. Loan Risk Assessment
+
+The organization implements a systematic risk assessment for all loan applications:
+
+#### Risk Scoring System
+- **Member History Score**: Based on previous loan repayment history (0-40 points)
+- **Financial Stability**: Based on income verification and existing financial obligations (0-30 points)
+- **Contribution History**: Based on consistency of contributions to the organization (0-20 points)
+- **Collateral/Security**: Additional security provided for the loan (0-10 points)
+
+#### Loan Approval Thresholds
+- **Low Risk (80-100 points)**: Eligible for maximum loan amounts at lowest interest rates
+- **Medium Risk (60-79 points)**: Eligible for moderate loan amounts with standard interest rates
+- **High Risk (40-59 points)**: Limited loan amounts with higher interest rates
+- **Very High Risk (<40 points)**: Loan application subject to additional review or denial
+
+```mermaid
+flowchart TD
+    A[Loan Application] --> B[Risk Assessment]
+    B --> C{Risk Score}
+    C -->|80-100 points| D[Low Risk]
+    C -->|60-79 points| E[Medium Risk]
+    C -->|40-59 points| F[High Risk]
+    C -->|<40 points| G[Very High Risk]
+    D --> H[Maximum Loan Amount]
+    E --> I[Moderate Loan Amount]
+    F --> J[Limited Loan Amount]
+    G --> K[Additional Review/Denial]
+```
+
+### 2. Reserve Requirements
+
+To ensure financial stability, the organization maintains the following reserve requirements:
+
+- **Operational Reserve**: 15% of total assets must be kept as liquid funds for day-to-day operations
+- **Contingency Reserve**: 10% of outstanding loan value is maintained for potential defaults
+- **Growth Reserve**: 5% of quarterly profits are allocated for future expansion
+
+#### Reserve Calculation Example
+
+Given:
+- Total Assets: Rs. 1,500,000
+- Outstanding Loans: Rs. 800,000
+- Quarterly Profit: Rs. 120,000
+
+Calculations:
+1. Operational Reserve = Rs. 1,500,000 × 15% = Rs. 225,000
+2. Contingency Reserve = Rs. 800,000 × 10% = Rs. 80,000
+3. Growth Reserve = Rs. 120,000 × 5% = Rs. 6,000
+4. Total Required Reserves = Rs. 311,000
+
+### 3. Dividend Enhancement Program
+
+In addition to the standard dividend calculation, the system now includes a loyalty bonus component:
+
+#### Loyalty Dividend Bonus
+- **5+ Years Membership**: Additional 0.5% on personal dividend rate
+- **10+ Years Membership**: Additional 1.0% on personal dividend rate
+- **15+ Years Membership**: Additional 1.5% on personal dividend rate
+
+This enhancement rewards long-term members for their continued participation and loyalty to the organization.
+
+#### Enhanced Dividend Example
+
+For a member with 12 years of active membership:
+- Base Dividend: Rs. 2,000 (calculated using the proportional method)
+- Loyalty Bonus: 1.0% additional rate
+- Enhanced Dividend = Rs. 2,000 × (1 + 0.01) = Rs. 2,020
+
 ## Conclusion
 
 The financial logic of this application creates a self-sustaining ecosystem where loan interest creates income, which generates profits, which are partially distributed as dividends to reward active membership. 
 
-The new proportional dividend distribution system enhances this model by directly linking member rewards to their financial contributions. This creates stronger incentives for members to:
+The proportional dividend distribution system directly links member rewards to their financial contributions. This creates stronger incentives for members to:
 
 1. Increase their financial contributions to the organization
 2. Maintain active membership status
 3. Repay loans on time
 4. Participate in the organization's growth
 
-By implementing proportional dividends based on member assets, the system provides a more equitable reward mechanism that better aligns with cooperative financial principles and encourages long-term investment in the organization's success. 
+With the addition of risk management protocols, reserve requirements, and loyalty enhancements, the system now provides a more comprehensive financial framework that ensures long-term sustainability while rewarding member participation and commitment.
+
+The organization's financial health is continuously monitored through automated quarterly assessments, which evaluate key metrics including:
+- Loan-to-asset ratio
+- Reserve adequacy
+- Member contribution growth
+- Operational cost efficiency
+
+These assessments help guide strategic decision-making and ensure the continued financial stability of the organization. 
