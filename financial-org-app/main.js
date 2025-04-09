@@ -628,7 +628,7 @@ ipcMain.handle('update-user', async (event, user) => {
       user.username, user.role, user.id
     );
   }
-  return { success: true };
+  return { success: true, id: user.id };
 });
 
 ipcMain.handle('delete-user', async (event, userId) => {
@@ -649,9 +649,28 @@ ipcMain.handle('verify-user', async (event, credentials) => {
       new Date().toISOString(), user.id
     );
     return { success: true, user };
-  } else {
-    return { success: false, message: 'Invalid username or password' };
   }
+  return { success: false, message: 'Invalid username or password' };
+});
+
+ipcMain.handle('changePassword', async (event, userId, oldPassword, newPassword) => {
+  // First verify the old password
+  const user = await db.get(
+    'SELECT id, username FROM users WHERE id = ? AND password = ?',
+    userId, oldPassword
+  );
+  
+  if (!user) {
+    return { success: false, message: 'Current password is incorrect' };
+  }
+  
+  // Update to the new password
+  await db.run(
+    'UPDATE users SET password = ? WHERE id = ?',
+    newPassword, userId
+  );
+  
+  return { success: true, message: 'Password changed successfully' };
 });
 
 // Data backup and restore

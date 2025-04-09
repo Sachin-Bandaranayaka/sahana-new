@@ -13,6 +13,10 @@ import {
   Typography,
   useMediaQuery,
   useTheme,
+  Button,
+  Divider,
+  Avatar,
+  Tooltip
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -23,10 +27,12 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import SavingsIcon from '@mui/icons-material/Savings';
+import LogoutIcon from '@mui/icons-material/Logout';
+import PersonIcon from '@mui/icons-material/Person';
 
 const drawerWidth = 240;
 
-const Layout = () => {
+const Layout = ({ user, onLogout }) => {
   const theme = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -35,6 +41,11 @@ const Layout = () => {
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
+  };
+
+  const handleLogout = () => {
+    onLogout();
+    navigate('/login');
   };
 
   const menuItems = [
@@ -73,6 +84,13 @@ const Layout = () => {
           </ListItem>
         ))}
       </List>
+      <Divider />
+      <List>
+        <ListItem button onClick={handleLogout}>
+          <ListItemIcon><LogoutIcon /></ListItemIcon>
+          <ListItemText primary="Logout (පිටවීම)" />
+        </ListItem>
+      </List>
     </div>
   );
 
@@ -96,9 +114,29 @@ const Layout = () => {
           >
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" noWrap component="div">
+          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             Sahana Welfare Management (සහන සුභසාධක කළමනාකරණය)
           </Typography>
+          
+          {/* User info and logout */}
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Tooltip title={user ? user.username : ''}>
+              <Avatar sx={{ bgcolor: theme.palette.secondary.main, mr: 1 }}>
+                <PersonIcon />
+              </Avatar>
+            </Tooltip>
+            <Typography variant="body2" sx={{ mr: 2, display: { xs: 'none', sm: 'block' } }}>
+              {user ? user.username : ''}
+            </Typography>
+            <Button 
+              color="inherit" 
+              onClick={handleLogout}
+              startIcon={<LogoutIcon />}
+              sx={{ display: { xs: 'none', sm: 'flex' } }}
+            >
+              Logout
+            </Button>
+          </Box>
         </Toolbar>
       </AppBar>
       <Box

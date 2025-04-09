@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld(
     updateUser: (user) => ipcRenderer.invoke('update-user', user),
     deleteUser: (userId) => ipcRenderer.invoke('delete-user', userId),
     verifyUser: (credentials) => ipcRenderer.invoke('verify-user', credentials),
+    changePassword: (userId, oldPassword, newPassword) => ipcRenderer.invoke('changePassword', userId, oldPassword, newPassword),
     
     // Data backup and restore
     backupData: (path) => ipcRenderer.invoke('backup-data', path),

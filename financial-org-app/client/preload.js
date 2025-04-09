@@ -7,6 +7,10 @@ console.log('Preload script is running');
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld(
   'api', {
+    // Authentication
+    verifyUser: (credentials) => ipcRenderer.invoke('verify-user', credentials),
+    changePassword: (userId, oldPassword, newPassword) => ipcRenderer.invoke('changePassword', userId, oldPassword, newPassword),
+    
     // Members
     getMembers: () => {
       console.log('Calling getMembers from preload');

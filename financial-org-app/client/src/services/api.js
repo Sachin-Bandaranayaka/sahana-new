@@ -11,6 +11,35 @@ const simulateDelay = (data, ms = 500) => {
 
 // Unified API functions for accessing the database
 const api = {
+  // Authentication
+  login: async (credentials) => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.verifyUser(credentials);
+  },
+  
+  changePassword: async (userId, oldPassword, newPassword) => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.changePassword(userId, oldPassword, newPassword);
+  },
+  
+  logout: () => {
+    // Remove user from local storage
+    localStorage.removeItem('user');
+    return { success: true };
+  },
+  
+  getCurrentUser: () => {
+    // Get user from local storage
+    const userJson = localStorage.getItem('user');
+    return userJson ? JSON.parse(userJson) : null;
+  },
+  
   // Members
   getMembers: async () => {
     console.log("getMembers called, isElectron:", isElectron);

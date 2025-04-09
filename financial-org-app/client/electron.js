@@ -128,6 +128,14 @@ function createTables() {
       defaultLoanInterest REAL DEFAULT 10,
       membershipFee REAL DEFAULT 1000,
       shareValue REAL DEFAULT 1000
+    )`,
+    `CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      role TEXT DEFAULT 'user',
+      created_at TEXT,
+      last_login TEXT
     )`
   ];
 
@@ -187,6 +195,29 @@ function createTables() {
             console.log('Default settings created');
           }
         });
+      }
+    });
+
+    // Check if default admin user exists, if not create it
+    db.get('SELECT COUNT(*) as count FROM users', (err, row) => {
+      if (err) {
+        console.error('Error checking users:', err);
+        return;
+      }
+      
+      if (row.count === 0) {
+        // Create default admin user
+        db.run(
+          'INSERT INTO users (username, password, role, created_at) VALUES (?, ?, ?, ?)',
+          ['admin', 'admin123', 'admin', new Date().toISOString()],
+          function(err) {
+            if (err) {
+              console.error('Error creating default admin user:', err);
+            } else {
+              console.log('Default admin user created');
+            }
+          }
+        );
       }
     });
   });
@@ -370,9 +401,79 @@ function createWindow() {
   });
 }
 
-app.on('ready', () => {
+app.on('ready', async () => {
   createDatabase();
   createWindow();
+  
+  // Authentication handlers
+  ipcMain.handle('verify-user', async (event, credentials) => {
+    return new Promise((resolve, reject) => {
+      db.get(
+        'SELECT id, username, role FROM users WHERE username = ? AND password = ?',
+        [credentials.username, credentials.password],
+        (err, user) => {
+          if (err) {
+            console.error('Error verifying user:', err);
+            reject(err);
+            return;
+          }
+          
+          if (user) {
+            // Update last login time
+            db.run(
+              'UPDATE users SET last_login = ? WHERE id = ?',
+              [new Date().toISOString(), user.id],
+              (err) => {
+                if (err) {
+                  console.error('Error updating last login:', err);
+                }
+              }
+            );
+            resolve({ success: true, user });
+          } else {
+            resolve({ success: false, message: 'Invalid username or password' });
+          }
+        }
+      );
+    });
+  });
+
+  ipcMain.handle('changePassword', async (event, userId, oldPassword, newPassword) => {
+    return new Promise((resolve, reject) => {
+      // First verify the old password
+      db.get(
+        'SELECT id, username FROM users WHERE id = ? AND password = ?',
+        [userId, oldPassword],
+        (err, user) => {
+          if (err) {
+            console.error('Error verifying password:', err);
+            reject(err);
+            return;
+          }
+          
+          if (!user) {
+            resolve({ success: false, message: 'Current password is incorrect' });
+            return;
+          }
+          
+          // Update to the new password
+          db.run(
+            'UPDATE users SET password = ? WHERE id = ?',
+            [newPassword, userId],
+            (err) => {
+              if (err) {
+                console.error('Error changing password:', err);
+                reject(err);
+                return;
+              }
+              
+              resolve({ success: true, message: 'Password changed successfully' });
+            }
+          );
+        }
+      );
+    });
+  });
 });
 
 app.on('window-all-closed', () => {
