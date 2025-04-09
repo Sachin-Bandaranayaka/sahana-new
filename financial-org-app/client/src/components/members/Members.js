@@ -49,9 +49,7 @@ const Members = () => {
     name: '',
     address: '',
     phone: '',
-    email: '',
     joinDate: new Date().toISOString().split('T')[0],
-    shares: 0,
     status: 'active'
   });
   const [formErrors, setFormErrors] = useState({});
@@ -102,9 +100,7 @@ const Members = () => {
         name: member.name,
         address: member.address,
         phone: member.phone || member.mobile,
-        email: member.email,
         joinDate: member.joinDate,
-        shares: member.shares,
         status: member.status
       });
     } else {
@@ -114,9 +110,7 @@ const Members = () => {
         name: '',
         address: '',
         phone: '',
-        email: '',
         joinDate: new Date().toISOString().split('T')[0],
-        shares: 0,
         status: 'active'
       });
     }
@@ -148,7 +142,6 @@ const Members = () => {
     const errors = {};
     
     // Required fields
-    if (!formData.member_id.trim()) errors.member_id = 'Member ID is required';
     if (!formData.name.trim()) errors.name = 'Name is required';
     if (!formData.phone.trim()) errors.phone = 'Phone number is required';
     if (!formData.joinDate) errors.joinDate = 'Join date is required';
@@ -158,15 +151,7 @@ const Members = () => {
       errors.phone = 'Enter a valid 10-digit phone number';
     }
     
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      errors.email = 'Enter a valid email address';
-    }
-    
-    if (formData.shares < 0) {
-      errors.shares = 'Shares cannot be negative';
-    }
-    
-    // Member ID format validation (you can customize this based on your requirements)
+    // Member ID format validation (only if provided)
     if (formData.member_id && !/^[A-Z0-9]{3,10}$/.test(formData.member_id)) {
       errors.member_id = 'Member ID must be 3-10 characters of uppercase letters and numbers';
     }
@@ -264,7 +249,6 @@ const Members = () => {
               <TableCell>Name</TableCell>
               <TableCell>Contact</TableCell>
               <TableCell>Join Date</TableCell>
-              <TableCell>Shares</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Actions</TableCell>
             </TableRow>
@@ -286,15 +270,9 @@ const Members = () => {
                     <TableCell>
                       <Box>
                         <Typography variant="body2">{member.phone}</Typography>
-                        {member.email && (
-                          <Typography variant="caption" color="textSecondary">
-                            {member.email}
-                          </Typography>
-                        )}
                       </Box>
                     </TableCell>
                     <TableCell>{new Date(member.joinDate).toLocaleDateString()}</TableCell>
-                    <TableCell>{member.shares}</TableCell>
                     <TableCell>
                       <Chip
                         label={member.status}
@@ -351,7 +329,7 @@ const Members = () => {
                 value={formData.member_id}
                 onChange={handleInputChange}
                 error={!!formErrors.member_id}
-                helperText={formErrors.member_id}
+                helperText={formErrors.member_id || "Optional. If left blank, it will be auto-generated"}
                 disabled={editMode}
               />
             </Grid>
@@ -366,7 +344,7 @@ const Members = () => {
                 helperText={formErrors.name}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12}>
               <TextField
                 fullWidth
                 label="Phone"
@@ -375,18 +353,6 @@ const Members = () => {
                 onChange={handleInputChange}
                 error={!!formErrors.phone}
                 helperText={formErrors.phone}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Email"
-                name="email"
-                type="email"
-                value={formData.email}
-                onChange={handleInputChange}
-                error={!!formErrors.email}
-                helperText={formErrors.email}
               />
             </Grid>
             <Grid item xs={12}>
@@ -400,7 +366,7 @@ const Members = () => {
                 rows={2}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12}>
               <TextField
                 fullWidth
                 label="Join Date"
@@ -411,17 +377,6 @@ const Members = () => {
                 error={!!formErrors.joinDate}
                 helperText={formErrors.joinDate}
                 InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Shares"
-                name="shares"
-                type="number"
-                value={formData.shares}
-                onChange={handleInputChange}
-                InputProps={{ inputProps: { min: 0 } }}
               />
             </Grid>
             <Grid item xs={12}>

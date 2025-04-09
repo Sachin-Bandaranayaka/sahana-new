@@ -230,17 +230,39 @@ ipcMain.handle('get-member', async (event, memberId) => {
 });
 
 ipcMain.handle('add-member', async (event, member) => {
-  const result = await db.run(
-    'INSERT INTO members (member_id, name, address, phone, email, joinDate, shares, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    member.member_id, member.name, member.address, member.phone, member.email, member.joinDate, member.shares || 0, member.status || 'active'
-  );
-  return { id: result.lastID, ...member };
+  // Check if member_id is provided
+  const memberData = { ...member };
+
+  if (memberData.member_id) {
+    // Use the provided member_id
+    const result = await db.run(
+      'INSERT INTO members (member_id, name, address, phone, joinDate, status) VALUES (?, ?, ?, ?, ?, ?)',
+      memberData.member_id, memberData.name, memberData.address, memberData.phone, 
+      memberData.joinDate, memberData.status || 'active'
+    );
+    return { id: result.lastID, ...memberData };
+  } else {
+    // Let the database generate an ID first, then we'll update with formatted member_id
+    const result = await db.run(
+      'INSERT INTO members (name, address, phone, joinDate, status) VALUES (?, ?, ?, ?, ?)',
+      memberData.name, memberData.address, memberData.phone, 
+      memberData.joinDate, memberData.status || 'active'
+    );
+    
+    const newId = result.lastID;
+    const generatedMemberId = `M${String(newId).padStart(4, '0')}`;
+    
+    await db.run('UPDATE members SET member_id = ? WHERE id = ?', generatedMemberId, newId);
+    memberData.member_id = generatedMemberId;
+    
+    return { id: newId, ...memberData };
+  }
 });
 
 ipcMain.handle('update-member', async (event, id, member) => {
   await db.run(
-    'UPDATE members SET member_id = ?, name = ?, address = ?, phone = ?, email = ?, joinDate = ?, shares = ?, status = ? WHERE id = ?',
-    member.member_id, member.name, member.address, member.phone, member.email, member.joinDate, member.shares || 0, member.status || 'active', id
+    'UPDATE members SET member_id = ?, name = ?, address = ?, phone = ?, joinDate = ?, status = ? WHERE id = ?',
+    member.member_id, member.name, member.address, member.phone, member.joinDate, member.status || 'active', id
   );
   return { id, ...member };
 });

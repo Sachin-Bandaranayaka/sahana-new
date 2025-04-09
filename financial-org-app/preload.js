@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld(
     getMembers: () => ipcRenderer.invoke('get-members'),
     getMember: (id) => ipcRenderer.invoke('get-member', id),
     addMember: (member) => ipcRenderer.invoke('add-member', member),
+    updateMember: (id, member) => ipcRenderer.invoke('update-member', id, member),
+    deleteMember: (id) => ipcRenderer.invoke('delete-member', id),
     
     // Cash book operations
     getCashBook: (memberId) => ipcRenderer.invoke('get-cash-book', memberId),

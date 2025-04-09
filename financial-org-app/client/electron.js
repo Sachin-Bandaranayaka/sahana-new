@@ -588,15 +588,67 @@ ipcMain.handle('get-member-transactions', async (event, memberId) => {
 
 ipcMain.handle('add-member', async (event, member) => {
   return new Promise((resolve, reject) => {
-    const { name, address, phone, email, joinDate, shares, status } = member;
+    const { member_id, name, address, phone, joinDate, status } = member;
+    
+    // Insert the member with all provided fields
     db.run(
-      'INSERT INTO members (name, address, phone, email, joinDate, shares, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [name, address, phone, email, joinDate, shares, status],
+      'INSERT INTO members (member_id, name, address, phone, joinDate, status) VALUES (?, ?, ?, ?, ?, ?)',
+      [member_id || '', name, address, phone, joinDate, status],
       function(err) {
-        if (err) reject(err);
-        else resolve({ id: this.lastID, ...member });
+        if (err) {
+          reject(err);
+          return;
+        }
+        
+        const newMemberId = this.lastID;
+        
+        // If no member_id was provided, generate one and update the record
+        if (!member_id) {
+          const generatedMemberId = `M${String(newMemberId).padStart(4, '0')}`;
+          db.run('UPDATE members SET member_id = ? WHERE id = ?', [generatedMemberId, newMemberId], (updateErr) => {
+            if (updateErr) {
+              console.error('Error updating member_id:', updateErr);
+              reject(updateErr);
+              return;
+            }
+            
+            resolve({ 
+              id: newMemberId, 
+              member_id: generatedMemberId,
+              ...member 
+            });
+          });
+        } else {
+          resolve({ 
+            id: newMemberId, 
+            ...member 
+          });
+        }
       }
     );
+  });
+});
+
+// Add delete-member handler
+ipcMain.handle('delete-member', async (event, id) => {
+  return new Promise((resolve, reject) => {
+    db.run('DELETE FROM members WHERE id = ?', [id], function(err) {
+      if (err) {
+        console.error('Error deleting member:', err);
+        reject(err);
+        return;
+      }
+      
+      if (this.changes === 0) {
+        const error = new Error('Member not found');
+        console.error(error);
+        reject(error);
+        return;
+      }
+      
+      console.log(`Successfully deleted member with ID ${id}`);
+      resolve({ success: true });
+    });
   });
 });
 
@@ -1325,8 +1377,8 @@ ipcMain.handle('restore-database', async (event, filePath) => {
           if (backupData.members && backupData.members.length > 0) {
             backupData.members.forEach(member => {
               db.run(
-                'INSERT INTO members (id, member_id, name, address, phone, email, joinDate, shares, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [member.id, member.member_id, member.name, member.address, member.phone, member.email, member.joinDate, member.shares, member.status]
+                'INSERT INTO members (id, member_id, name, address, phone, joinDate, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [member.id, member.member_id, member.name, member.address, member.phone, member.joinDate, member.status]
               );
             });
           }
