@@ -25,9 +25,12 @@ import {
   Select,
   InputAdornment,
   Snackbar,
-  Alert
+  Alert,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
 } from '@mui/material';
-import { SavingsOutlined, CalculateOutlined, PersonOutline } from '@mui/icons-material';
+import { SavingsOutlined, CalculateOutlined, PersonOutline, ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import api from '../../services/api';
 
 const Dividends = () => {
@@ -75,6 +78,14 @@ const Dividends = () => {
   const [selectedQuarter, setSelectedQuarter] = useState({
     quarter: getCurrentQuarter(),
     year: new Date().getFullYear()
+  });
+  const [yearlyDividendData, setYearlyDividendData] = useState([]);
+  const [yearlyDividendDialogOpen, setYearlyDividendDialogOpen] = useState(false);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [yearlyCalculationProgress, setYearlyCalculationProgress] = useState({
+    calculating: false,
+    completedQuarters: 0,
+    totalQuarters: 4
   });
 
   function getCurrentQuarter() {
@@ -146,8 +157,17 @@ const Dividends = () => {
     }
   };
 
+  // Helper function to format currency values
   const formatCurrency = (amount) => {
-    return `Rs. ${Number(amount).toLocaleString()}`;
+    if (typeof api.formatCurrency === 'function') {
+      return api.formatCurrency(amount);
+    } else {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2
+      }).format(amount);
+    }
   };
   
   const handleAddDividendOpen = () => {
@@ -643,24 +663,209 @@ const Dividends = () => {
     }));
   };
 
+  // Update the yearly dividend calculation function
+  const calculateYearlyDividends = async () => {
+    setYearlyCalculationProgress({
+      calculating: true,
+      completedQuarters: 0,
+      totalQuarters: 4
+    });
+    
+    try {
+      // Use the new backend method to calculate quarterly dividends by year
+      const result = await api.calculateQuarterlyDividendsByYear({
+        year: selectedYear,
+        dividendRate: 8.5 // Default rate, can be customized
+      });
+      
+      // Map the result to our UI format
+      const yearlyDividends = result.yearlyDividends.map(member => {
+        return {
+          memberId: member.memberId,
+          memberName: member.memberName,
+          quarterlyDividends: member.quarterlyDividends.map((qd, index) => ({
+            quarter: index + 1,
+            amount: qd.dividendAmount,
+            proportion: qd.proportion,
+            memberAssets: qd.memberAssets,
+            orgAssets: result.quarterlyDividends[index].orgAssets
+          })),
+          totalYearlyDividend: member.totalYearlyDividend
+        };
+      });
+      
+      setYearlyDividendData(yearlyDividends);
+      setYearlyDividendDialogOpen(true);
+      
+      // Update progress to complete
+      setYearlyCalculationProgress({
+        calculating: false,
+        completedQuarters: 4,
+        totalQuarters: 4
+      });
+    } catch (error) {
+      console.error('Error calculating yearly dividends:', error);
+      setSnackbar({
+        open: true,
+        message: 'Error calculating yearly dividends: ' + error.message,
+        severity: 'error'
+      });
+      
+      setYearlyCalculationProgress({
+        calculating: false,
+        completedQuarters: 0,
+        totalQuarters: 4
+      });
+    }
+  };
+  
+  const handleYearlyDividendDialogClose = () => {
+    setYearlyDividendDialogOpen(false);
+  };
+  
+  const handleYearChange = (event) => {
+    setSelectedYear(parseInt(event.target.value));
+  };
+
+  // Add a function to save yearly dividend results
+  const saveYearlyDividends = async () => {
+    if (yearlyDividendData.length === 0) {
+      setSnackbar({
+        open: true,
+        message: 'No dividend data to save',
+        severity: 'warning'
+      });
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      // First, create a yearly dividend entry
+      const yearlyDividend = {
+        date: `${selectedYear}-12-31`, // End of year
+        year: selectedYear,
+        amount: yearlyDividendData.reduce((sum, member) => sum + member.totalYearlyDividend, 0),
+        rate: profitFormData.dividendRate,
+        description: `${selectedYear} Annual Dividend`,
+        profitAmount: profitFormData.profitAmount * 4, // Assuming quarterly profit is 1/4 of yearly
+        distributionMethod: 'yearly-proportional'
+      };
+      
+      const savedDividend = await api.addDividend(yearlyDividend);
+      
+      // Then add payment entries for each member
+      for (const member of yearlyDividendData) {
+        const payment = {
+          dividendId: savedDividend.id,
+          memberId: member.memberId,
+          amount: member.totalYearlyDividend,
+          shares: (member.quarterlyDividends[3]?.proportion || 0) * 100, // Use Q4 proportion for reference
+          status: 'pending',
+          paymentDate: new Date().toISOString().split('T')[0],
+          notes: `Yearly dividend calculated from quarterly proportions: Q1=${member.quarterlyDividends[0]?.amount || 0}, Q2=${member.quarterlyDividends[1]?.amount || 0}, Q3=${member.quarterlyDividends[2]?.amount || 0}, Q4=${member.quarterlyDividends[3]?.amount || 0}`
+        };
+        
+        await api.addDividendPayment(payment);
+      }
+      
+      setSnackbar({
+        open: true,
+        message: 'Yearly dividends saved successfully',
+        severity: 'success'
+      });
+      
+      // Close the dialog and refresh data
+      handleYearlyDividendDialogClose();
+      fetchDividendData();
+    } catch (error) {
+      console.error('Error saving yearly dividends:', error);
+      setSnackbar({
+        open: true,
+        message: 'Error saving yearly dividends: ' + error.message,
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h4">Dividends</Typography>
+      <Typography variant="h4" gutterBottom>
+        Dividend Management
+      </Typography>
+      
+      <Grid container spacing={4}>
+        <Grid item xs={12} md={4}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                <SavingsOutlined sx={{ mr: 1, verticalAlign: 'middle' }} />
+                Total Dividends
+              </Typography>
+              <Typography variant="h4">
+                {loading ? <CircularProgress size={24} /> : formatCurrency(dividendData.totalDividends)}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        <Grid item xs={12} md={4}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Latest Dividend Rate
+              </Typography>
+              <Typography variant="h4">
+                {loading ? <CircularProgress size={24} /> : `${dividendData.dividendRate}%`}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        <Grid item xs={12} md={4}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                <PersonOutline sx={{ mr: 1, verticalAlign: 'middle' }} />
+                Active Members
+              </Typography>
+              <Typography variant="h4">
+                {loading ? <CircularProgress size={24} /> : members.filter(m => m.status === 'active').length}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+      
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4, mb: 2 }}>
+        <Typography variant="h5">
+          Dividend History
+        </Typography>
         <Box>
-          <Button
-            variant="contained"
-            startIcon={<PersonOutline />}
-            onClick={calculateMemberQuarterlyDividends}
+          <Button 
+            variant="contained" 
+            color="secondary"
+            onClick={() => calculateMemberQuarterlyDividends()}
             sx={{ mr: 2 }}
           >
-            Member Dividends
+            Quarterly Preview
           </Button>
-          <Button
-            variant="contained"
+          
+          <Button 
+            variant="contained" 
+            color="primary"
+            onClick={() => calculateYearlyDividends()}
             startIcon={<CalculateOutlined />}
-            onClick={openCalculateProfitsDialog}
             sx={{ mr: 2 }}
+          >
+            Calculate Yearly Dividends
+          </Button>
+          
+          <Button 
+            variant="contained" 
+            color="primary"
+            onClick={openCalculateProfitsDialog}
           >
             Calculate Profits
           </Button>
@@ -1031,6 +1236,168 @@ const Dividends = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleMemberDividendDialogClose}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* New dialog for yearly dividend calculation */}
+      <Dialog open={yearlyDividendDialogOpen} onClose={handleYearlyDividendDialogClose} maxWidth="lg" fullWidth>
+        <DialogTitle>Yearly Dividend Calculation for {selectedYear}</DialogTitle>
+        <DialogContent>
+          {yearlyCalculationProgress.calculating ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', my: 3 }}>
+              <CircularProgress />
+              <Typography variant="subtitle1" sx={{ mt: 2 }}>
+                Calculating quarterly dividends... {yearlyCalculationProgress.completedQuarters}/{yearlyCalculationProgress.totalQuarters} quarters completed
+              </Typography>
+            </Box>
+          ) : (
+            <>
+              <Grid container spacing={3}>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Year</InputLabel>
+                    <Select
+                      name="year"
+                      value={selectedYear}
+                      onChange={handleYearChange}
+                      label="Year"
+                    >
+                      {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
+                        <MenuItem key={year} value={year}>{year}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <Button 
+                    variant="contained" 
+                    onClick={calculateYearlyDividends}
+                    startIcon={<CalculateOutlined />}
+                  >
+                    Recalculate
+                  </Button>
+                </Grid>
+              </Grid>
+
+              {yearlyDividendData.length > 0 && (
+                <Box sx={{ mt: 3 }}>
+                  <Typography variant="subtitle1" gutterBottom>
+                    This shows each member's yearly dividend calculated by summing up the quarterly dividends.
+                  </Typography>
+                  
+                  <Typography variant="body2" color="textSecondary" gutterBottom>
+                    For each quarter, dividends are calculated based on the member's assets proportion at the end of that quarter.
+                  </Typography>
+                  
+                  <TableContainer component={Paper} sx={{ mt: 2 }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Member</TableCell>
+                          <TableCell align="right">Q1 Dividend</TableCell>
+                          <TableCell align="right">Q2 Dividend</TableCell>
+                          <TableCell align="right">Q3 Dividend</TableCell>
+                          <TableCell align="right">Q4 Dividend</TableCell>
+                          <TableCell align="right">Total Yearly Dividend</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {yearlyDividendData.map((item) => (
+                          <TableRow key={item.memberId}>
+                            <TableCell>{item.memberName}</TableCell>
+                            <TableCell align="right">
+                              {formatCurrency(item.quarterlyDividends[0]?.amount || 0)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatCurrency(item.quarterlyDividends[1]?.amount || 0)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatCurrency(item.quarterlyDividends[2]?.amount || 0)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatCurrency(item.quarterlyDividends[3]?.amount || 0)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatCurrency(item.totalYearlyDividend)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                  
+                  {/* Detailed quarterly breakdown */}
+                  <Typography variant="h6" sx={{ mt: 4 }}>Quarterly Details</Typography>
+                  <Typography variant="body2" color="textSecondary" gutterBottom>
+                    Shows how each member's assets and proportion changed over the quarters.
+                  </Typography>
+                  
+                  <Box sx={{ mt: 2 }}>
+                    {[1, 2, 3, 4].map(quarter => (
+                      <Accordion key={quarter}>
+                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                          <Typography>Quarter {quarter} Details</Typography>
+                        </AccordionSummary>
+                        <AccordionDetails>
+                          <TableContainer component={Paper}>
+                            <Table size="small">
+                              <TableHead>
+                                <TableRow>
+                                  <TableCell>Member</TableCell>
+                                  <TableCell align="right">Assets</TableCell>
+                                  <TableCell align="right">Proportion</TableCell>
+                                  <TableCell align="right">Dividend Amount</TableCell>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {yearlyDividendData.map((item) => {
+                                  const quarterData = item.quarterlyDividends[quarter - 1];
+                                  return quarterData ? (
+                                    <TableRow key={item.memberId}>
+                                      <TableCell>{item.memberName}</TableCell>
+                                      <TableCell align="right">
+                                        {formatCurrency(quarterData.memberAssets)}
+                                      </TableCell>
+                                      <TableCell align="right">
+                                        {(quarterData.proportion * 100).toFixed(2)}%
+                                      </TableCell>
+                                      <TableCell align="right">
+                                        {formatCurrency(quarterData.amount)}
+                                      </TableCell>
+                                    </TableRow>
+                                  ) : null;
+                                })}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                          
+                          {yearlyDividendData[0]?.quarterlyDividends[quarter - 1] && (
+                            <Typography variant="body2" sx={{ mt: 2 }}>
+                              Organization Assets for Q{quarter}: {formatCurrency(yearlyDividendData[0].quarterlyDividends[quarter - 1].orgAssets)}
+                            </Typography>
+                          )}
+                        </AccordionDetails>
+                      </Accordion>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleYearlyDividendDialogClose}>Close</Button>
+          {yearlyDividendData.length > 0 && !yearlyCalculationProgress.calculating && (
+            <Button 
+              variant="contained" 
+              color="primary" 
+              onClick={saveYearlyDividends}
+              disabled={loading}
+            >
+              {loading ? <CircularProgress size={24} /> : 'Save Yearly Dividends'}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 

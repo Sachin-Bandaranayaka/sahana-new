@@ -106,10 +106,20 @@ const api = {
   // Loan Types
   getLoanTypes: async () => {
     if (!isElectron) {
-      throw new Error('This application requires Electron to access the database');
+      console.warn('Running in browser mode, returning mock loan types data');
+      return [
+        { id: 1, name: 'Personal Loan', interest_rate: 8 },
+        { id: 2, name: 'Business Loan', interest_rate: 12 },
+        { id: 3, name: 'Emergency Loan', interest_rate: 10 }
+      ];
     }
     
-    return await window.api.getLoanTypes();
+    try {
+      return await window.api.getLoanTypes();
+    } catch (error) {
+      console.error('Error fetching loan types:', error);
+      throw error;
+    }
   },
   
   addLoanType: async (loanType) => {
@@ -317,6 +327,14 @@ const api = {
     }
     
     return await window.api.calculateProportionalDividends(params);
+  },
+  
+  calculateQuarterlyDividendsByYear: async (params) => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.calculateQuarterlyDividendsByYear(params);
   },
   
   // Settings

@@ -29,6 +29,14 @@ contextBridge.exposeInMainWorld(
     deleteLoan: (id) => ipcRenderer.invoke('delete-loan', id),
     addLoanPayment: (loanId, payment) => ipcRenderer.invoke('add-loan-payment', loanId, payment),
     
+    // Loan Types
+    getLoanTypes: () => {
+      console.log('Calling getLoanTypes from preload');
+      return ipcRenderer.invoke('get-loan-types');
+    },
+    addLoanType: (loanType) => ipcRenderer.invoke('add-loan-type', loanType),
+    deleteLoanType: (id) => ipcRenderer.invoke('delete-loan-type', id),
+    
     // CashBook
     getCashEntries: () => ipcRenderer.invoke('get-cash-entries'),
     addCashEntry: (entry) => ipcRenderer.invoke('add-cash-entry', entry),
@@ -73,6 +81,7 @@ contextBridge.exposeInMainWorld(
     calculateMemberAsset: (memberId) => ipcRenderer.invoke('calculate-member-asset', memberId),
     calculateOrgAssets: () => ipcRenderer.invoke('calculate-org-assets'),
     calculateProportionalDividends: (params) => ipcRenderer.invoke('calculate-proportional-dividends', params),
+    calculateQuarterlyDividendsByYear: (params) => ipcRenderer.invoke('calculate-quarterly-dividends-by-year', params),
     calculateQuarterlyProfit: (quarter, year) => ipcRenderer.invoke('calculate-quarterly-profit', quarter, year),
     
     // Cashbook

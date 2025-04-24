@@ -52,7 +52,7 @@ function createTables() {
       amount REAL NOT NULL,
       interestRate REAL NOT NULL,
       startDate TEXT NOT NULL,
-      endDate TEXT NOT NULL,
+      endDate TEXT,
       purpose TEXT,
       dailyInterest INTEGER DEFAULT 0,
       status TEXT DEFAULT 'active',
@@ -693,14 +693,25 @@ ipcMain.handle('get-loans', async () => {
 ipcMain.handle('add-loan', async (event, loan) => {
   return new Promise((resolve, reject) => {
     const { memberId, amount, interestRate, startDate, endDate, purpose, dailyInterest, status, balance } = loan;
-    db.run(
-      'INSERT INTO loans (memberId, amount, interestRate, startDate, endDate, purpose, dailyInterest, status, balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [memberId, amount, interestRate, startDate, endDate, purpose, dailyInterest ? 1 : 0, status || 'active', balance || amount],
-      function(err) {
-        if (err) reject(err);
-        else resolve({ id: this.lastID, ...loan });
+    
+    // Handle optional endDate
+    let query, params;
+    if (endDate) {
+      query = 'INSERT INTO loans (memberId, amount, interestRate, startDate, endDate, purpose, dailyInterest, status, balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)';
+      params = [memberId, amount, interestRate, startDate, endDate, purpose, dailyInterest ? 1 : 0, status || 'active', balance || amount];
+    } else {
+      query = 'INSERT INTO loans (memberId, amount, interestRate, startDate, purpose, dailyInterest, status, balance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
+      params = [memberId, amount, interestRate, startDate, purpose, dailyInterest ? 1 : 0, status || 'active', balance || amount];
+    }
+    
+    db.run(query, params, function(err) {
+      if (err) {
+        console.error('Error adding loan:', err);
+        reject(err);
+      } else {
+        resolve({ id: this.lastID, ...loan });
       }
-    );
+    });
   });
 });
 
@@ -1620,7 +1631,7 @@ ipcMain.handle('add-loan-type', async (event, loanType) => {
 ipcMain.handle('delete-loan-type', async (event, id) => {
   return new Promise((resolve, reject) => {
     // First check if any loans are using this loan type
-    db.get('SELECT COUNT(*) as count FROM loans WHERE loanTypeId = ?', [id], (err, row) => {
+    db.get('SELECT COUNT(*) as count FROM loans WHERE loan_type = ? OR loanTypeId = ?', [id, id], (err, row) => {
       if (err) {
         console.error('Error checking loan type usage:', err);
         reject(err);
