@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld(
     // Calculations
     calculateMemberAsset: (memberId) => ipcRenderer.invoke('calculate-member-asset', memberId),
     calculateQuarterlyProfit: (quarter, year) => ipcRenderer.invoke('calculate-quarterly-profit', quarter, year),
+    calculateQuarterlyDividendsByYear: (params) => ipcRenderer.invoke('calculate-quarterly-dividends-by-year', params),
     
     // Report operations
     getMemberTransactions: (params) => ipcRenderer.invoke('get-member-transactions', params),

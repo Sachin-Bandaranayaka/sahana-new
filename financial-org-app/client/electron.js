@@ -1551,6 +1551,235 @@ ipcMain.handle('calculate-proportional-dividends', async (event, { quarterlyProf
   });
 });
 
+// CALCULATE MEMBER ASSET
+ipcMain.handle('calculate-member-asset', async (event, memberId) => {
+  return new Promise((resolve, reject) => {
+    try {
+      // First get member's cash book total
+      db.get(
+        `SELECT COALESCE(SUM(amount), 0) as cashTotal 
+         FROM cashbook 
+         WHERE memberId = ?`,
+        [memberId],
+        (err, cashResult) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+
+          // Then get member's dividend total
+          db.get(
+            `SELECT COALESCE(SUM(amount), 0) as dividendTotal 
+             FROM dividend_payments 
+             WHERE memberId = ?`,
+            [memberId],
+            (err, dividendResult) => {
+              if (err) {
+                reject(err);
+                return;
+              }
+
+              const cashTotal = cashResult ? cashResult.cashTotal : 0;
+              const dividendTotal = dividendResult ? dividendResult.dividendTotal : 0;
+              const totalAsset = cashTotal + dividendTotal;
+
+              resolve({
+                cashTotal: cashTotal,
+                dividendTotal: dividendTotal,
+                totalAsset: totalAsset
+              });
+            }
+          );
+        }
+      );
+    } catch (error) {
+      reject(error);
+    }
+  });
+});
+
+// CALCULATE QUARTERLY DIVIDENDS BY YEAR
+ipcMain.handle('calculate-quarterly-dividends-by-year', async (event, { year, dividendRate }) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Get all active members
+      const activeMembers = await new Promise((resolve, reject) => {
+        db.all('SELECT * FROM members WHERE status = "active"', (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
+        });
+      });
+      
+      if (activeMembers.length === 0) {
+        resolve({
+          year,
+          dividendRate,
+          quarterlyDividends: [],
+          yearlyDividends: [],
+          totalYearlyDividend: 0
+        });
+        return;
+      }
+      
+      // Calculate quarterly profits for the year
+      const quarterlyProfits = [];
+      for (let quarter = 1; quarter <= 4; quarter++) {
+        // Define quarter start and end dates
+        const quarterEndMonth = quarter * 3;
+        const quarterEndDate = `${year}-${String(quarterEndMonth).padStart(2, '0')}-${['31', '30', '30', '31'][quarter-1]}`;
+        
+        // Get profit for this quarter based on date range rather than explicit quarter column
+        const quarterStartDate = quarter > 1 
+          ? `${year}-${String((quarter-1) * 3 + 1).padStart(2, '0')}-01`
+          : `${year}-01-01`;
+        
+        const profit = await new Promise((resolve, reject) => {
+          db.get(
+            `SELECT COALESCE(SUM(profitAmount), 0) as total FROM dividends 
+             WHERE quarterEndDate >= ? AND quarterEndDate <= ?`,
+            [quarterStartDate, quarterEndDate],
+            (err, result) => {
+              if (err) reject(err);
+              else resolve(result?.total || 0);
+            }
+          );
+        });
+        
+        quarterlyProfits.push({ quarter, profit });
+      }
+      
+      // For each quarter, calculate dividend distribution
+      const quarterlyDividends = await Promise.all(quarterlyProfits.map(async ({ quarter, profit }) => {
+        // Calculate dividend pool for this quarter
+        const dividendPool = profit * (dividendRate / 100);
+        
+        // Get organization assets at the end of this quarter
+        const quarterEndMonth = quarter * 3;
+        const quarterEndDate = `${year}-${String(quarterEndMonth).padStart(2, '0')}-${['31', '30', '30', '31'][quarter-1]}`;
+        
+        // Get total org assets at quarter end
+        const cashContributions = await new Promise((resolve, reject) => {
+          db.get(
+            `SELECT COALESCE(SUM(amount), 0) as total FROM cashbook WHERE date <= ?`,
+            [quarterEndDate],
+            (err, result) => {
+              if (err) reject(err);
+              else resolve(result?.total || 0);
+            }
+          );
+        });
+        
+        const totalOrgAssets = cashContributions;
+        
+        // Calculate each member's dividend for this quarter
+        const memberDividends = await Promise.all(activeMembers.map(async (member) => {
+          try {
+            // Calculate member's assets at the end of this quarter
+            const cashResult = await new Promise((resolve, reject) => {
+              db.get(
+                `SELECT COALESCE(SUM(amount), 0) as cashTotal FROM cashbook 
+                 WHERE memberId = ? AND date <= ?`,
+                [member.id, quarterEndDate],
+                (err, result) => {
+                  if (err) reject(err);
+                  else resolve(result || { cashTotal: 0 });
+                }
+              );
+            });
+            
+            const dividendResult = await new Promise((resolve, reject) => {
+              db.get(
+                `SELECT COALESCE(SUM(amount), 0) as dividendTotal FROM dividend_payments 
+                 WHERE memberId = ? AND paymentDate <= ?`,
+                [member.id, quarterEndDate],
+                (err, result) => {
+                  if (err) reject(err);
+                  else resolve(result || { dividendTotal: 0 });
+                }
+              );
+            });
+            
+            const cashTotal = cashResult.cashTotal || 0;
+            const dividendTotal = dividendResult.dividendTotal || 0;
+            const memberAssets = cashTotal + dividendTotal;
+            
+            // Calculate proportion
+            const proportion = totalOrgAssets > 0 ? memberAssets / totalOrgAssets : 0;
+            
+            // Calculate dividend amount
+            const dividendAmount = proportion * dividendPool;
+            
+            return {
+              memberId: member.id,
+              memberName: member.name,
+              memberAssets,
+              proportion,
+              dividendAmount
+            };
+          } catch (error) {
+            console.error(`Error calculating Q${quarter} dividend for member ${member.id}:`, error);
+            return {
+              memberId: member.id,
+              memberName: member.name,
+              memberAssets: 0,
+              proportion: 0,
+              dividendAmount: 0,
+              error: error.message
+            };
+          }
+        }));
+        
+        return {
+          quarter,
+          profit,
+          dividendPool,
+          orgAssets: totalOrgAssets,
+          asOfDate: quarterEndDate,
+          memberDividends
+        };
+      }));
+      
+      // Now calculate the yearly totals for each member
+      const yearlyDividends = activeMembers.map(member => {
+        const memberQuarterlyDividends = quarterlyDividends.map(qd => {
+          return qd.memberDividends.find(md => md.memberId === member.id) || {
+            memberId: member.id,
+            memberName: member.name,
+            dividendAmount: 0,
+            proportion: 0,
+            memberAssets: 0
+          };
+        });
+        
+        const totalYearlyDividend = memberQuarterlyDividends.reduce(
+          (sum, qd) => sum + qd.dividendAmount, 0
+        );
+        
+        return {
+          memberId: member.id,
+          memberName: member.name,
+          quarterlyDividends: memberQuarterlyDividends,
+          totalYearlyDividend
+        };
+      });
+      
+      // Sort by total yearly dividend (highest first)
+      yearlyDividends.sort((a, b) => b.totalYearlyDividend - a.totalYearlyDividend);
+      
+      resolve({
+        year,
+        dividendRate,
+        quarterlyDividends,
+        yearlyDividends,
+        totalYearlyDividend: yearlyDividends.reduce((sum, yd) => sum + yd.totalYearlyDividend, 0)
+      });
+    } catch (error) {
+      console.error('Error calculating quarterly dividends by year:', error);
+      reject(error);
+    }
+  });
+});
+
 // Export functions for testing
 module.exports = { createWindow, createDatabase };
 
