@@ -1470,13 +1470,36 @@ async function fixSettingsTable() {
     // First verify the table structure
     const tableInfo = await db.all("PRAGMA table_info(settings)");
     console.log('fixSettingsTable: PRAGMA table_info(settings) result:', JSON.stringify(tableInfo));
+    
+    if (tableInfo.length === 0) {
+      // Table doesn't exist, create it with correct structure
+      console.log('fixSettingsTable: Settings table does not exist, creating it...');
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS settings (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT UNIQUE,
+          value TEXT
+        );
+      `);
+      
+      // Insert default SMS settings
+      console.log('fixSettingsTable: Inserting default settings into new settings table.');
+      await db.run("INSERT OR IGNORE INTO settings (name, value) VALUES ('sms_api_key', '')", []);
+      await db.run("INSERT OR IGNORE INTO settings (name, value) VALUES ('sms_user_id', '')", []);
+      await db.run("INSERT OR IGNORE INTO settings (name, value) VALUES ('sms_enabled', 'false')", []);
+      await db.run("INSERT OR IGNORE INTO settings (name, value) VALUES ('sms_sender_id', 'FINANCIALORG')", []);
+      
+      console.log('fixSettingsTable: Settings table created with defaults.');
+      return true;
+    }
+    
     const columns = tableInfo.map(col => col.name);
     
     // If value column doesn't exist, we need to fix the table
     if (!columns.includes('value')) {
       console.log('fixSettingsTable: Settings table missing value column, attempting to fix structure...');
       
-      // Save existing settings
+      // Save existing settings with all their columns
       let existingSettings = [];
       try {
         const allColumns = columns.join(', ');
@@ -1518,17 +1541,29 @@ async function fixSettingsTable() {
             const name = setting.name;
             let value = null;
             
-            // Find a value in any non-id, non-name column
-            for (const key in setting) {
-              if (key !== 'id' && key !== 'name' && setting[key] !== null) {
-                value = setting[key];
-                console.log(`fixSettingsTable: Migrating ${name} -> ${value} (from column ${key})`);
-                break;
+            // Check if we have direct columns for the SMS settings
+            if (name === 'sms_api_key' && columns.includes('sms_api_key')) {
+              value = setting['sms_api_key'];
+            } else if (name === 'sms_user_id' && columns.includes('sms_user_id')) {
+              value = setting['sms_user_id'];
+            } else if (name === 'sms_enabled' && columns.includes('sms_enabled')) {
+              value = setting['sms_enabled'];
+            } else if (name === 'sms_sender_id' && columns.includes('sms_sender_id')) {
+              value = setting['sms_sender_id'];
+            } else {
+              // Find a value in any non-id, non-name column
+              for (const key in setting) {
+                if (key !== 'id' && key !== 'name' && setting[key] !== null) {
+                  value = setting[key];
+                  console.log(`fixSettingsTable: Migrating ${name} -> ${value} (from column ${key})`);
+                  break;
+                }
               }
             }
             
             if (name && value !== null) {
               await db.run('INSERT OR REPLACE INTO settings_new (name, value) VALUES (?, ?)', [name, value]);
+              console.log(`fixSettingsTable: Migrated setting ${name} -> ${value}`);
             } else {
               console.log(`fixSettingsTable: Could not find value to migrate for setting name: ${name}`);
             }
@@ -1568,21 +1603,36 @@ async function fixSettingsTable() {
 ipcMain.handle('get-sms-settings', async () => {
   console.log('get-sms-settings: Handler invoked.');
   try {
-    // Make sure the settings table has the right structure
-    console.log('get-sms-settings: Calling fixSettingsTable...');
-    const fixed = await fixSettingsTable();
-    if (!fixed) {
-      console.error('get-sms-settings: Failed to fix settings table structure. Returning defaults.');
-      throw new Error('Failed to ensure settings table structure');
-    }
-    console.log('get-sms-settings: fixSettingsTable completed. Proceeding to fetch settings.');
+    // Check if sms_settings table exists
+    const tableCheck = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='sms_settings'");
     
-    // Now get the settings
+    if (!tableCheck) {
+      // Create sms_settings table if it doesn't exist
+      console.log('get-sms-settings: SMS settings table does not exist. Creating it...');
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS sms_settings (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT UNIQUE,
+          value TEXT
+        )
+      `);
+      
+      // Insert default settings
+      await db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_api_key', '')", []);
+      await db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_user_id', '')", []);
+      await db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_enabled', 'false')", []);
+      await db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_sender_id', 'FINANCIALORG')", []);
+      
+      console.log('get-sms-settings: Default SMS settings inserted.');
+    }
+    
+    // Get settings from the sms_settings table
     console.log('get-sms-settings: Fetching individual settings...');
-    const apiKeySetting = await db.get('SELECT value FROM settings WHERE name = ?', ['sms_api_key']);
-    const userIdSetting = await db.get('SELECT value FROM settings WHERE name = ?', ['sms_user_id']);
-    const enabledSetting = await db.get('SELECT value FROM settings WHERE name = ?', ['sms_enabled']);
-    const senderIdSetting = await db.get('SELECT value FROM settings WHERE name = ?', ['sms_sender_id']);
+    const apiKeySetting = await db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_api_key']);
+    const userIdSetting = await db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_user_id']);
+    const enabledSetting = await db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_enabled']);
+    const senderIdSetting = await db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_sender_id']);
+    
     console.log('get-sms-settings: Fetched settings from DB:', { apiKeySetting, userIdSetting, enabledSetting, senderIdSetting });
     
     const result = {
@@ -1609,14 +1659,20 @@ ipcMain.handle('get-sms-settings', async () => {
 
 ipcMain.handle('update-sms-settings', async (event, settings) => {
   try {
-    // Make sure the settings table has the right structure
-    await fixSettingsTable();
+    // Ensure sms_settings table exists
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS sms_settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE,
+        value TEXT
+      )
+    `);
     
-    // Now update the settings
-    await db.run('UPDATE settings SET value = ? WHERE name = ?', [settings.apiKey, 'sms_api_key']);
-    await db.run('UPDATE settings SET value = ? WHERE name = ?', [settings.userId, 'sms_user_id']);
-    await db.run('UPDATE settings SET value = ? WHERE name = ?', [settings.enabled ? 'true' : 'false', 'sms_enabled']);
-    await db.run('UPDATE settings SET value = ? WHERE name = ?', [settings.senderId, 'sms_sender_id']);
+    // Update settings
+    await db.run('INSERT OR REPLACE INTO sms_settings (name, value) VALUES (?, ?)', ['sms_api_key', settings.apiKey]);
+    await db.run('INSERT OR REPLACE INTO sms_settings (name, value) VALUES (?, ?)', ['sms_user_id', settings.userId]);
+    await db.run('INSERT OR REPLACE INTO sms_settings (name, value) VALUES (?, ?)', ['sms_enabled', settings.enabled ? 'true' : 'false']);
+    await db.run('INSERT OR REPLACE INTO sms_settings (name, value) VALUES (?, ?)', ['sms_sender_id', settings.senderId]);
     
     return { success: true };
   } catch (error) {
@@ -1628,11 +1684,11 @@ ipcMain.handle('update-sms-settings', async (event, settings) => {
 // SMS functionality with notify.lk API
 async function sendSMS(phoneNumber, message) {
   try {
-    // Get SMS settings from database
-    const apiKey = await getSetting('sms_api_key');
-    const userId = await getSetting('sms_user_id');
-    const smsEnabled = await getSetting('sms_enabled');
-    const senderId = await getSetting('sms_sender_id');
+    // Get SMS settings from database using new getSMSSetting function
+    const apiKey = await getSMSSetting('sms_api_key');
+    const userId = await getSMSSetting('sms_user_id');
+    const smsEnabled = await getSMSSetting('sms_enabled');
+    const senderId = await getSMSSetting('sms_sender_id');
     
     // Check if SMS is enabled
     if (smsEnabled !== 'true' || !apiKey || !userId) {
@@ -1710,14 +1766,23 @@ function formatPhoneNumber(phone) {
   return cleaned;
 }
 
-// Helper to get settings
-async function getSetting(name) {
+// New helper function for SMS settings
+async function getSMSSetting(name) {
   try {
-    // Simple direct query now that we've ensured the table structure
-    const setting = await db.get('SELECT value FROM settings WHERE name = ?', name);
+    // Ensure sms_settings table exists
+    const tableCheck = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='sms_settings'");
+    
+    if (!tableCheck) {
+      // If table doesn't exist, return null
+      console.log(`getSMSSetting: sms_settings table does not exist.`);
+      return null;
+    }
+    
+    // Query the setting from sms_settings table
+    const setting = await db.get('SELECT value FROM sms_settings WHERE name = ?', name);
     return setting ? setting.value : null;
   } catch (error) {
-    console.error(`Error getting setting ${name}:`, error);
+    console.error(`Error getting SMS setting ${name}:`, error);
     return null;
   }
 } 
