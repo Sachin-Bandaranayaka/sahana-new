@@ -64,6 +64,11 @@ contextBridge.exposeInMainWorld(
     
     // Data backup and restore
     backupData: (path) => ipcRenderer.invoke('backup-data', path),
-    restoreData: (path) => ipcRenderer.invoke('restore-data', path)
+    restoreData: (path) => ipcRenderer.invoke('restore-data', path),
+    
+    // SMS Services
+    sendSMS: (phoneNumber, message) => ipcRenderer.invoke('send-sms', phoneNumber, message),
+    getSMSSettings: () => ipcRenderer.invoke('get-sms-settings'),
+    updateSMSSettings: (settings) => ipcRenderer.invoke('update-sms-settings', settings)
   }
 ); 

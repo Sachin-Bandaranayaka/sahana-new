@@ -88,7 +88,12 @@ contextBridge.exposeInMainWorld(
     getCashbookEntries: () => ipcRenderer.invoke('get-cashbook-entries'),
     getCashbookEntriesByDateRange: (startDate, endDate) => ipcRenderer.invoke('get-cashbook-entries-by-date-range', startDate, endDate),
     addCashbookEntry: (entry) => ipcRenderer.invoke('add-cashbook-entry', entry),
-    updateCashbookEntry: (id, entry) => ipcRenderer.invoke('update-cashbook-entry', id, entry)
+    updateCashbookEntry: (id, entry) => ipcRenderer.invoke('update-cashbook-entry', id, entry),
+    
+    // SMS Services
+    getSMSSettings: () => ipcRenderer.invoke('get-sms-settings'),
+    updateSMSSettings: (settings) => ipcRenderer.invoke('update-sms-settings', settings),
+    sendSMS: (phoneNumber, message) => ipcRenderer.invoke('send-sms', phoneNumber, message)
   }
 );
 

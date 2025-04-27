@@ -34,6 +34,7 @@ import {
   ReceiptLong as ReceiptIcon
 } from '@mui/icons-material';
 import api from '../../services/api';
+import smsService from '../../services/smsService';
 
 const Loans = () => {
   const [loans, setLoans] = useState([]);
@@ -295,7 +296,24 @@ const Loans = () => {
           status: 'active'
         };
         
-        await api.addLoan(newLoan);
+        const loanResponse = await api.addLoan(newLoan);
+        
+        // Get member phone number and send SMS notification
+        try {
+          const member = await api.getMember(newLoan.memberId);
+          if (member && member.phone) {
+            const smsResult = await smsService.sendLoanIssuedSMS(
+              member.phone, 
+              loanResponse.id || 'N/A', 
+              newLoan.amount
+            );
+            
+            console.log('SMS notification result:', smsResult);
+          }
+        } catch (smsError) {
+          console.error('Error sending loan issuance SMS:', smsError);
+        }
+        
         setSnackbar({
           open: true,
           message: 'Loan added successfully',
@@ -326,6 +344,28 @@ const Loans = () => {
       };
       
       await api.addLoanPayment(currentLoan.id, newPayment);
+      
+      // Send SMS notification for payment
+      try {
+        // Get member details to get the phone number
+        const member = await api.getMember(currentLoan.memberId);
+        if (member && member.phone) {
+          // Calculate new balance after payment
+          const updatedBalance = currentLoan.balance - newPayment.amount;
+          
+          // Send the SMS
+          const smsResult = await smsService.sendLoanPaymentSMS(
+            member.phone,
+            currentLoan.id,
+            newPayment.amount,
+            updatedBalance
+          );
+          
+          console.log('Payment SMS notification result:', smsResult);
+        }
+      } catch (smsError) {
+        console.error('Error sending payment SMS:', smsError);
+      }
       
       setSnackbar({
         open: true,

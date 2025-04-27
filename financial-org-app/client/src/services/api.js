@@ -398,6 +398,31 @@ const api = {
     }
     
     return await window.api.addCashbookEntry(entry);
+  },
+  
+  // SMS Services
+  getSMSSettings: async () => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.getSMSSettings();
+  },
+  
+  updateSMSSettings: async (settings) => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.updateSMSSettings(settings);
+  },
+  
+  sendSMS: async (phoneNumber, message) => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.sendSMS(phoneNumber, message);
   }
 };
 

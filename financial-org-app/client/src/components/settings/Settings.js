@@ -37,10 +37,12 @@ import {
   FolderOpen as FolderOpenIcon,
   Lock as LockIcon,
   Add as AddIcon,
-  Delete as DeleteIcon
+  Delete as DeleteIcon,
+  Sms as SmsIcon
 } from '@mui/icons-material';
 import api from '../../services/api';
 import ChangePassword from './ChangePassword';
+import SMSSettings from './SMSSettings';
 
 const Settings = () => {
   const [tabValue, setTabValue] = useState(0);
@@ -520,6 +522,7 @@ const Settings = () => {
           <Tab icon={<SaveIcon />} label="Financial" />
           <Tab icon={<BackupIcon />} label="Backup & Restore" />
           <Tab icon={<LockIcon />} label="Security" />
+          <Tab icon={<SmsIcon />} label="SMS Notifications" />
         </Tabs>
       </Paper>
       
@@ -643,8 +646,16 @@ const Settings = () => {
         </>
       )}
       
-      {/* Backup & Restore Tab Panel */}
+      {/* Financial Settings Tab Panel */}
       {tabValue === 1 && (
+        <>
+          <Typography variant="h6" gutterBottom>Financial Settings</Typography>
+          {renderFinancialSettings()}
+        </>
+      )}
+      
+      {/* Backup & Restore Tab Panel */}
+      {tabValue === 2 && (
         <Grid container spacing={4}>
           <Grid item xs={12} md={6}>
             <Card>
@@ -724,7 +735,7 @@ const Settings = () => {
       )}
       
       {/* Security Tab Panel */}
-      {tabValue === 2 && (
+      {tabValue === 3 && (
         <Box>
           <Typography variant="h6" sx={{ mb: 2 }}>
             Account Security Settings
@@ -733,6 +744,9 @@ const Settings = () => {
           <ChangePassword />
         </Box>
       )}
+      
+      {/* SMS Notifications Tab Panel */}
+      {tabValue === 4 && <SMSSettings />}
       
       <Snackbar
         open={snackbar.open}

@@ -16,6 +16,7 @@ A desktop application built with Electron and React for managing financial opera
 - **Dividend Book**: Track profit distribution to members
 - **Bank Account Management**: Monitor organization's bank accounts and fixed deposits
 - **Reports**: Generate detailed financial reports for various aspects of the organization
+- **SMS Notifications**: Automated SMS notifications for member registration, loan issuance, and loan payments
 - **Data Backup & Restore**: Secure your organization's data with backup and restore functionality
 - **User Management**: Multiple user access with role-based permissions
 - **Quarterly Profit Calculation**: Calculate and distribute organizational profits
@@ -30,6 +31,7 @@ The application is built using:
 - **SQLite**: For local database storage
 - **Material UI**: For modern UI components
 - **Chart.js**: For data visualization
+- **Notify.lk API**: For SMS notifications
 
 ## Development Setup
 
@@ -59,6 +61,7 @@ The application is built using:
 - **settings**: Application settings
 - **meetings**: Meeting records
 - **users**: User authentication and permission records
+- **sms_logs**: SMS notification history and delivery status
 
 ## Reports
 
@@ -86,6 +89,24 @@ Member's total asset is calculated as:
 Total Asset = Total Cash Book Entry + Total Dividend Book Entry
 ```
 
+## SMS Notification System
+
+The application includes an SMS notification system using the Notify.lk API for these key events:
+- **Member Registration**: When a new member is registered, they receive a welcome SMS with their member ID
+- **Loan Issuance**: When a loan is issued, the member receives an SMS with the loan amount and reference ID
+- **Loan Payment**: When a loan payment is made, the member receives a confirmation SMS with payment details and remaining balance
+
+### Setting up SMS Notifications
+
+1. Sign up for an account at [notify.lk](https://www.notify.lk/)
+2. Obtain your API Key and User ID from your notify.lk account
+3. Go to Settings > SMS Settings in the application
+4. Enable SMS notifications and enter your API credentials
+5. Set your Sender ID (if registered with notify.lk)
+6. Test the SMS functionality with the provided test tool
+
+SMS logs are stored in the database for auditing and troubleshooting purposes.
+
 ## Data Backup & Restore
 
 The application provides functionality to:
@@ -99,4 +120,4 @@ The application provides functionality to:
 
 ## License
 
-ISC 
+ISC

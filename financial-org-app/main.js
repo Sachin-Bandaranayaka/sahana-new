@@ -3,6 +3,8 @@ const path = require('path');
 const isDev = require('electron-is-dev');
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
+const axios = require('axios');
+const https = require('https');
 
 let mainWindow;
 let db;
@@ -114,9 +116,75 @@ async function setupDatabase() {
       created_at TEXT,
       last_login TEXT
     );
+    
+    CREATE TABLE IF NOT EXISTS sms_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phone_number TEXT NOT NULL,
+      message TEXT NOT NULL,
+      status TEXT,
+      sent_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      response_data TEXT
+    );
   `);
   
-  // Insert default settings if not present
+  // Check if settings table has the right structure
+  try {
+    // Drop and recreate the settings table completely
+    console.log('Recreating settings table with correct structure...');
+    
+    // First, get the current settings if they exist
+    let existingSettings = [];
+    try {
+      // Query all columns from the settings table to make sure we can migrate any data
+      const columns = await db.all("PRAGMA table_info(settings)");
+      if (columns.length > 0) {
+        const allColumns = columns.map(col => col.name).join(', ');
+        existingSettings = await db.all(`SELECT ${allColumns} FROM settings`);
+        console.log(`Found ${existingSettings.length} existing settings to migrate`);
+      }
+    } catch (error) {
+      console.log('Could not retrieve existing settings:', error.message);
+    }
+    
+    // Now drop and recreate the table
+    await db.exec(`
+      DROP TABLE IF EXISTS settings;
+      CREATE TABLE settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE,
+        value TEXT
+      );
+    `);
+    
+    console.log('Settings table recreated successfully');
+    
+    // Migrate old data if available
+    if (existingSettings.length > 0) {
+      console.log('Migrating old settings data...');
+      for (const setting of existingSettings) {
+        // Try to find the name and any value to migrate
+        const name = setting.name;
+        let value = null;
+        
+        // Look for a value in any column other than id or name
+        for (const key in setting) {
+          if (key !== 'id' && key !== 'name' && setting[key] !== null) {
+            value = setting[key];
+            break;
+          }
+        }
+        
+        if (name && value !== null) {
+          await db.run('INSERT INTO settings (name, value) VALUES (?, ?)', [name, value]);
+        }
+      }
+      console.log('Settings data migration completed');
+    }
+  } catch (error) {
+    console.error('Error recreating settings table:', error);
+  }
+  
+  // Now insert default settings
   const settings = [
     ['member_loan_interest_rate', '9'],
     ['special_loan_interest_rate', '12'],
@@ -128,11 +196,15 @@ async function setupDatabase() {
     ['quarter_start_month_3', '7'],
     ['quarter_end_month_3', '9'],
     ['quarter_start_month_4', '10'],
-    ['quarter_end_month_4', '12']
+    ['quarter_end_month_4', '12'],
+    ['sms_api_key', ''],
+    ['sms_user_id', ''],
+    ['sms_enabled', 'false'], 
+    ['sms_sender_id', 'FINANCIALORG']
   ];
   
   for (const [name, value] of settings) {
-    await db.run('INSERT OR IGNORE INTO settings (name, value) VALUES (?, ?)', name, value);
+    await db.run('INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)', [name, value]);
   }
   
   // Insert default admin user if not present
@@ -375,7 +447,7 @@ ipcMain.handle('add-dividend-entry', async (event, entry) => {
   const result = await db.run(
     `INSERT INTO dividend_book 
      (member_id, date, description, share_amount, annual_interest, attending_bonus, deductibles, total, quarter, year) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     entry.member_id, entry.date, entry.description, entry.share_amount, entry.annual_interest, 
     entry.attending_bonus, entry.deductibles, entry.total, entry.quarter, entry.year
   );
@@ -1384,4 +1456,268 @@ ipcMain.handle('calculate-quarterly-dividends-by-year', async (event, { year, di
       reject(error);
     }
   });
-}); 
+});
+
+// SMS Services
+ipcMain.handle('send-sms', async (event, phoneNumber, message) => {
+  return await sendSMS(phoneNumber, message);
+});
+
+// Helper function to fix settings table structure
+async function fixSettingsTable() {
+  console.log('fixSettingsTable: Checking settings table structure...');
+  try {
+    // First verify the table structure
+    const tableInfo = await db.all("PRAGMA table_info(settings)");
+    console.log('fixSettingsTable: PRAGMA table_info(settings) result:', JSON.stringify(tableInfo));
+    const columns = tableInfo.map(col => col.name);
+    
+    // If value column doesn't exist, we need to fix the table
+    if (!columns.includes('value')) {
+      console.log('fixSettingsTable: Settings table missing value column, attempting to fix structure...');
+      
+      // Save existing settings
+      let existingSettings = [];
+      try {
+        const allColumns = columns.join(', ');
+        console.log(`fixSettingsTable: Attempting to read existing settings with columns: ${allColumns}`);
+        existingSettings = await db.all(`SELECT ${allColumns} FROM settings`);
+        console.log(`fixSettingsTable: Found ${existingSettings.length} existing settings to migrate.`);
+      } catch (error) {
+        console.log('fixSettingsTable: Could not retrieve existing settings:', error.message);
+        // Proceed even if we can't retrieve old settings
+      }
+      
+      // Execute migrations in a transaction
+      console.log('fixSettingsTable: Starting transaction to fix table.');
+      await db.exec('BEGIN TRANSACTION');
+      
+      try {
+        // Create a new table with correct structure
+        console.log('fixSettingsTable: Creating settings_new table.');
+        await db.exec(`
+          CREATE TABLE IF NOT EXISTS settings_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE,
+            value TEXT
+          );
+        `);
+        
+        // Insert default SMS settings
+        console.log('fixSettingsTable: Inserting default settings into settings_new.');
+        await db.run("INSERT OR IGNORE INTO settings_new (name, value) VALUES ('sms_api_key', '')", []);
+        await db.run("INSERT OR IGNORE INTO settings_new (name, value) VALUES ('sms_user_id', '')", []);
+        await db.run("INSERT OR IGNORE INTO settings_new (name, value) VALUES ('sms_enabled', 'false')", []);
+        await db.run("INSERT OR IGNORE INTO settings_new (name, value) VALUES ('sms_sender_id', 'FINANCIALORG')", []);
+        
+        // Try to migrate existing settings
+        if (existingSettings.length > 0) {
+          console.log(`fixSettingsTable: Migrating ${existingSettings.length} settings to settings_new...`);
+          
+          for (const setting of existingSettings) {
+            const name = setting.name;
+            let value = null;
+            
+            // Find a value in any non-id, non-name column
+            for (const key in setting) {
+              if (key !== 'id' && key !== 'name' && setting[key] !== null) {
+                value = setting[key];
+                console.log(`fixSettingsTable: Migrating ${name} -> ${value} (from column ${key})`);
+                break;
+              }
+            }
+            
+            if (name && value !== null) {
+              await db.run('INSERT OR REPLACE INTO settings_new (name, value) VALUES (?, ?)', [name, value]);
+            } else {
+              console.log(`fixSettingsTable: Could not find value to migrate for setting name: ${name}`);
+            }
+          }
+        }
+        
+        // Drop the old table and rename the new one
+        console.log('fixSettingsTable: Dropping old settings table.');
+        await db.exec(`DROP TABLE IF EXISTS settings;`);
+        console.log('fixSettingsTable: Renaming settings_new to settings.');
+        await db.exec(`ALTER TABLE settings_new RENAME TO settings;`);
+        
+        // Commit transaction
+        console.log('fixSettingsTable: Committing transaction.');
+        await db.exec('COMMIT');
+        console.log('fixSettingsTable: Settings table fixed successfully.');
+        return true;
+      } catch (error) {
+        // Rollback on error
+        console.error('fixSettingsTable: Error during transaction, rolling back:', error);
+        await db.exec('ROLLBACK');
+        console.log('fixSettingsTable: Transaction rolled back.');
+        return false;
+      }
+    } else {
+      console.log('fixSettingsTable: Settings table already has value column. Structure is OK.');
+    }
+  } catch (dbError) {
+    console.error('fixSettingsTable: Error accessing settings table info:', dbError);
+    return false;
+  }
+  
+  // Table already has correct structure or error occurred previously
+  return true;
+}
+
+ipcMain.handle('get-sms-settings', async () => {
+  console.log('get-sms-settings: Handler invoked.');
+  try {
+    // Make sure the settings table has the right structure
+    console.log('get-sms-settings: Calling fixSettingsTable...');
+    const fixed = await fixSettingsTable();
+    if (!fixed) {
+      console.error('get-sms-settings: Failed to fix settings table structure. Returning defaults.');
+      throw new Error('Failed to ensure settings table structure');
+    }
+    console.log('get-sms-settings: fixSettingsTable completed. Proceeding to fetch settings.');
+    
+    // Now get the settings
+    console.log('get-sms-settings: Fetching individual settings...');
+    const apiKeySetting = await db.get('SELECT value FROM settings WHERE name = ?', ['sms_api_key']);
+    const userIdSetting = await db.get('SELECT value FROM settings WHERE name = ?', ['sms_user_id']);
+    const enabledSetting = await db.get('SELECT value FROM settings WHERE name = ?', ['sms_enabled']);
+    const senderIdSetting = await db.get('SELECT value FROM settings WHERE name = ?', ['sms_sender_id']);
+    console.log('get-sms-settings: Fetched settings from DB:', { apiKeySetting, userIdSetting, enabledSetting, senderIdSetting });
+    
+    const result = {
+      apiKey: apiKeySetting ? apiKeySetting.value : '',
+      userId: userIdSetting ? userIdSetting.value : '',
+      enabled: enabledSetting ? enabledSetting.value === 'true' : false,
+      senderId: senderIdSetting ? senderIdSetting.value : 'FINANCIALORG'
+    };
+    console.log('get-sms-settings: Returning settings object:', result);
+    return result;
+  } catch (error) {
+    console.error('get-sms-settings: Error in handler:', error);
+    // Return default values on error
+    const defaultResult = {
+      apiKey: '',
+      userId: '',
+      enabled: false,
+      senderId: 'FINANCIALORG'
+    };
+    console.log('get-sms-settings: Returning default settings due to error.', defaultResult);
+    return defaultResult;
+  }
+});
+
+ipcMain.handle('update-sms-settings', async (event, settings) => {
+  try {
+    // Make sure the settings table has the right structure
+    await fixSettingsTable();
+    
+    // Now update the settings
+    await db.run('UPDATE settings SET value = ? WHERE name = ?', [settings.apiKey, 'sms_api_key']);
+    await db.run('UPDATE settings SET value = ? WHERE name = ?', [settings.userId, 'sms_user_id']);
+    await db.run('UPDATE settings SET value = ? WHERE name = ?', [settings.enabled ? 'true' : 'false', 'sms_enabled']);
+    await db.run('UPDATE settings SET value = ? WHERE name = ?', [settings.senderId, 'sms_sender_id']);
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating SMS settings:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// SMS functionality with notify.lk API
+async function sendSMS(phoneNumber, message) {
+  try {
+    // Get SMS settings from database
+    const apiKey = await getSetting('sms_api_key');
+    const userId = await getSetting('sms_user_id');
+    const smsEnabled = await getSetting('sms_enabled');
+    const senderId = await getSetting('sms_sender_id');
+    
+    // Check if SMS is enabled
+    if (smsEnabled !== 'true' || !apiKey || !userId) {
+      console.log('SMS is disabled or API credentials not set');
+      return { success: false, error: 'SMS is disabled or API credentials not set' };
+    }
+
+    // Prepare the phone number (remove leading 0 and add country code if needed)
+    const formattedPhone = formatPhoneNumber(phoneNumber);
+    
+    // Prepare the API request to notify.lk
+    const params = new URLSearchParams();
+    params.append('user_id', userId);
+    params.append('api_key', apiKey);
+    params.append('sender_id', senderId);
+    params.append('to', formattedPhone);
+    params.append('message', message);
+    
+    // Send the request
+    const response = await axios.post('https://app.notify.lk/api/v1/send', params, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      httpsAgent: new https.Agent({
+        rejectUnauthorized: false
+      })
+    });
+    
+    // Log the SMS in database
+    await db.run(
+      'INSERT INTO sms_logs (phone_number, message, status, response_data) VALUES (?, ?, ?, ?)',
+      formattedPhone, message, response.data.status, JSON.stringify(response.data)
+    );
+    
+    return { 
+      success: response.data.status === 'success',
+      data: response.data
+    };
+    
+  } catch (error) {
+    console.error('Error sending SMS:', error);
+    
+    // Log the error
+    try {
+      await db.run(
+        'INSERT INTO sms_logs (phone_number, message, status, response_data) VALUES (?, ?, ?, ?)',
+        phoneNumber, message, 'error', JSON.stringify({ error: error.message })
+      );
+    } catch (dbError) {
+      console.error('Error logging SMS error:', dbError);
+    }
+    
+    return { 
+      success: false, 
+      error: error.message 
+    };
+  }
+}
+
+// Format phone number for the API - removes leading zeros and adds country code if needed
+function formatPhoneNumber(phone) {
+  // Clean the phone number - remove spaces, dashes, etc.
+  let cleaned = phone.replace(/\D/g, '');
+  
+  // If starts with a zero, remove it
+  if (cleaned.startsWith('0')) {
+    cleaned = cleaned.substring(1);
+  }
+  
+  // If doesn't start with country code, add Sri Lanka code (94)
+  if (!cleaned.startsWith('94')) {
+    cleaned = '94' + cleaned;
+  }
+  
+  return cleaned;
+}
+
+// Helper to get settings
+async function getSetting(name) {
+  try {
+    // Simple direct query now that we've ensured the table structure
+    const setting = await db.get('SELECT value FROM settings WHERE name = ?', name);
+    return setting ? setting.value : null;
+  } catch (error) {
+    console.error(`Error getting setting ${name}:`, error);
+    return null;
+  }
+} 

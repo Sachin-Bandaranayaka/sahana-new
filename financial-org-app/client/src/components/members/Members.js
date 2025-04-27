@@ -25,15 +25,16 @@ import {
   Alert,
   MenuItem
 } from '@mui/material';
-import { 
-  Add as AddIcon, 
-  Edit as EditIcon, 
+import {
+  Add as AddIcon,
+  Edit as EditIcon,
   Delete as DeleteIcon,
   Phone as PhoneIcon,
   Email as EmailIcon,
-  AccountBalance as AccountIcon
+  AccountBox as AccountIcon
 } from '@mui/icons-material';
 import api from '../../services/api';
+import smsService from '../../services/smsService';
 
 const Members = () => {
   const navigate = useNavigate();
@@ -174,7 +175,22 @@ const Members = () => {
         });
       } else {
         // Add new member
-        await api.addMember(formData);
+        const response = await api.addMember(formData);
+        
+        // Send SMS notification for registration
+        try {
+          if (formData.phone) {
+            const smsResult = await smsService.sendMemberRegistrationSMS(
+              formData.phone,
+              response.member_id || formData.member_id
+            );
+            
+            console.log('Member registration SMS result:', smsResult);
+          }
+        } catch (smsError) {
+          console.error('Error sending member registration SMS:', smsError);
+        }
+        
         setSnackbar({
           open: true,
           message: 'Member added successfully',
