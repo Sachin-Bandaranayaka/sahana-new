@@ -133,6 +133,19 @@ function createTables() {
       name TEXT NOT NULL,
       interest_rate REAL NOT NULL,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS sms_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE,
+      value TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS sms_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phone_number TEXT NOT NULL,
+      message TEXT NOT NULL,
+      status TEXT,
+      sent_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      response_data TEXT
     )`
   ];
 
@@ -1885,332 +1898,252 @@ ipcMain.handle('delete-loan-type', async (event, id) => {
 // SMS Services
 ipcMain.handle('send-sms', async (event, phoneNumber, message) => {
   return new Promise((resolve, reject) => {
-    // First check if sms_settings table exists
-    db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='sms_settings'", (err, tableExists) => {
-      if (err) {
-        console.error('Error checking for sms_settings table:', err);
-        reject(err);
-        return;
-      }
-      
-      // If sms_settings table doesn't exist, create it
-      const createAndQuerySettings = () => {
-        db.serialize(() => {
-          // Create table
-          db.run(`CREATE TABLE IF NOT EXISTS sms_settings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE,
-            value TEXT
-          )`, (err) => {
-            if (err) {
-              console.error('Error creating sms_settings table:', err);
-              reject(err);
-              return;
-            }
-            
-            // Insert default settings if not present
-            db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_api_key', '')", []);
-            db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_user_id', '')", []);
-            db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_enabled', 'false')", []);
-            db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_sender_id', 'FINANCIALORG')", []);
-            
-            // Now query the settings
-            querySettings();
-          });
-        });
-      };
-      
+    // First ensure SMS tables exist
+    ensureSMSTables(() => {
       // Function to query settings from sms_settings table
-      const querySettings = () => {
-        db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_api_key'], (err, apiKeyRow) => {
+      db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_api_key'], (err, apiKeyRow) => {
+        if (err) {
+          console.error('Error getting SMS API key:', err);
+          reject(err);
+          return;
+        }
+        
+        db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_user_id'], (err, userIdRow) => {
           if (err) {
-            console.error('Error getting SMS API key:', err);
+            console.error('Error getting SMS user ID:', err);
             reject(err);
             return;
           }
           
-          db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_user_id'], (err, userIdRow) => {
+          db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_enabled'], (err, enabledRow) => {
             if (err) {
-              console.error('Error getting SMS user ID:', err);
+              console.error('Error getting SMS enabled setting:', err);
               reject(err);
               return;
             }
             
-            db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_enabled'], (err, enabledRow) => {
+            db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_sender_id'], (err, senderIdRow) => {
               if (err) {
-                console.error('Error getting SMS enabled setting:', err);
+                console.error('Error getting SMS sender ID:', err);
                 reject(err);
                 return;
               }
               
-              db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_sender_id'], (err, senderIdRow) => {
-                if (err) {
-                  console.error('Error getting SMS sender ID:', err);
-                  reject(err);
-                  return;
-                }
-                
-                const apiKey = apiKeyRow ? apiKeyRow.value : '';
-                const userId = userIdRow ? userIdRow.value : '';
-                const enabled = enabledRow ? enabledRow.value === 'true' : false;
-                const senderId = senderIdRow ? senderIdRow.value : 'FINANCIALORG';
-                
-                // Check if SMS is enabled
-                if (!enabled || !apiKey || !userId) {
-                  console.log('SMS is disabled or API credentials not set');
-                  resolve({ success: false, error: 'SMS is disabled or API credentials not set' });
-                  return;
-                }
-                
-                // Format phone number
-                let formattedPhone = phoneNumber.replace(/\D/g, '');
-                if (formattedPhone.startsWith('0')) {
-                  formattedPhone = formattedPhone.substring(1);
-                }
-                if (!formattedPhone.startsWith('94')) {
-                  formattedPhone = '94' + formattedPhone;
-                }
-                
-                // Send SMS using notify.lk API
-                const axios = require('axios');
-                const https = require('https');
-                
-                const params = new URLSearchParams();
-                params.append('user_id', userId);
-                params.append('api_key', apiKey);
-                params.append('sender_id', senderId);
-                params.append('to', formattedPhone);
-                params.append('message', message);
-                
-                axios.post('https://app.notify.lk/api/v1/send', params, {
-                  headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                  },
-                  httpsAgent: new https.Agent({
-                    rejectUnauthorized: false
-                  })
+              const apiKey = apiKeyRow ? apiKeyRow.value : '';
+              const userId = userIdRow ? userIdRow.value : '';
+              const enabled = enabledRow ? enabledRow.value === 'true' : false;
+              const senderId = senderIdRow ? senderIdRow.value : 'FINANCIALORG';
+              
+              // Check if SMS is enabled
+              if (!enabled || !apiKey || !userId) {
+                console.log('SMS is disabled or API credentials not set');
+                resolve({ success: false, error: 'SMS is disabled or API credentials not set' });
+                return;
+              }
+              
+              // Format phone number
+              let formattedPhone = phoneNumber.replace(/\D/g, '');
+              if (formattedPhone.startsWith('0')) {
+                formattedPhone = formattedPhone.substring(1);
+              }
+              if (!formattedPhone.startsWith('94')) {
+                formattedPhone = '94' + formattedPhone;
+              }
+              
+              // Send SMS using notify.lk API
+              const axios = require('axios');
+              const https = require('https');
+              
+              const params = new URLSearchParams();
+              params.append('user_id', userId);
+              params.append('api_key', apiKey);
+              params.append('sender_id', senderId);
+              params.append('to', formattedPhone);
+              params.append('message', message);
+              
+              axios.post('https://app.notify.lk/api/v1/send', params, {
+                headers: {
+                  'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                httpsAgent: new https.Agent({
+                  rejectUnauthorized: false
                 })
-                .then(response => {
-                  // Log SMS in database
-                  db.run(
-                    'INSERT INTO sms_logs (phone_number, message, status, response_data) VALUES (?, ?, ?, ?)',
-                    [formattedPhone, message, response.data.status, JSON.stringify(response.data)],
-                    (err) => {
-                      if (err) {
-                        console.error('Error logging SMS:', err);
-                      }
-                      
-                      resolve({ 
-                        success: response.data.status === 'success',
-                        data: response.data
-                      });
+              })
+              .then(response => {
+                // Log SMS in database
+                db.run(
+                  'INSERT INTO sms_logs (phone_number, message, status, response_data) VALUES (?, ?, ?, ?)',
+                  [formattedPhone, message, response.data.status, JSON.stringify(response.data)],
+                  (err) => {
+                    if (err) {
+                      console.error('Error logging SMS:', err);
                     }
-                  );
-                })
-                .catch(error => {
-                  console.error('Error sending SMS:', error);
-                  
-                  // Log the error
-                  db.run(
-                    'INSERT INTO sms_logs (phone_number, message, status, response_data) VALUES (?, ?, ?, ?)',
-                    [formattedPhone, message, 'error', JSON.stringify({ error: error.message })],
-                    (err) => {
-                      if (err) {
-                        console.error('Error logging SMS error:', err);
-                      }
-                      
-                      resolve({ 
-                        success: false, 
-                        error: error.message 
-                      });
+                    
+                    resolve({ 
+                      success: response.data.status === 'success',
+                      data: response.data
+                    });
+                  }
+                );
+              })
+              .catch(error => {
+                console.error('Error sending SMS:', error);
+                
+                // Log the error
+                db.run(
+                  'INSERT INTO sms_logs (phone_number, message, status, response_data) VALUES (?, ?, ?, ?)',
+                  [formattedPhone, message, 'error', JSON.stringify({ error: error.message })],
+                  (err) => {
+                    if (err) {
+                      console.error('Error logging SMS error:', err);
                     }
-                  );
-                });
+                    
+                    resolve({ 
+                      success: false, 
+                      error: error.message 
+                    });
+                  }
+                );
               });
             });
           });
         });
-      };
-      
-      // Call appropriate function based on table existence
-      if (!tableExists) {
-        createAndQuerySettings();
-      } else {
-        querySettings();
-      }
+      });
     });
   });
 });
 
 ipcMain.handle('get-sms-settings', async () => {
   return new Promise((resolve, reject) => {
-    // First check if sms_settings table exists
-    db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='sms_settings'", (err, tableExists) => {
-      if (err) {
-        console.error('Error checking for sms_settings table:', err);
-        reject(err);
-        return;
-      }
-      
-      // If sms_settings table doesn't exist, create it
-      const createAndQuerySettings = () => {
-        db.serialize(() => {
-          // Create table
-          db.run(`CREATE TABLE IF NOT EXISTS sms_settings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE,
-            value TEXT
-          )`, (err) => {
-            if (err) {
-              console.error('Error creating sms_settings table:', err);
-              reject(err);
-              return;
-            }
-            
-            // Insert default settings if not present
-            db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_api_key', '')", []);
-            db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_user_id', '')", []);
-            db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_enabled', 'false')", []);
-            db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_sender_id', 'FINANCIALORG')", []);
-            
-            // Now query the settings
-            querySettings();
-          });
-        });
-      };
-      
+    // First ensure SMS tables exist
+    ensureSMSTables(() => {
       // Function to query settings from sms_settings table
-      const querySettings = () => {
-        db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_api_key'], (err, apiKeyRow) => {
+      db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_api_key'], (err, apiKeyRow) => {
+        if (err) {
+          console.error('Error getting SMS API key:', err);
+          reject(err);
+          return;
+        }
+        
+        db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_user_id'], (err, userIdRow) => {
           if (err) {
-            console.error('Error getting SMS API key:', err);
+            console.error('Error getting SMS user ID:', err);
             reject(err);
             return;
           }
           
-          db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_user_id'], (err, userIdRow) => {
+          db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_enabled'], (err, enabledRow) => {
             if (err) {
-              console.error('Error getting SMS user ID:', err);
+              console.error('Error getting SMS enabled setting:', err);
               reject(err);
               return;
             }
             
-            db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_enabled'], (err, enabledRow) => {
+            db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_sender_id'], (err, senderIdRow) => {
               if (err) {
-                console.error('Error getting SMS enabled setting:', err);
+                console.error('Error getting SMS sender ID:', err);
                 reject(err);
                 return;
               }
               
-              db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_sender_id'], (err, senderIdRow) => {
-                if (err) {
-                  console.error('Error getting SMS sender ID:', err);
-                  reject(err);
-                  return;
-                }
-                
-                const settings = {
-                  apiKey: apiKeyRow ? apiKeyRow.value : '',
-                  userId: userIdRow ? userIdRow.value : '',
-                  enabled: enabledRow ? enabledRow.value === 'true' : false,
-                  senderId: senderIdRow ? senderIdRow.value : 'FINANCIALORG'
-                };
-                
-                resolve(settings);
-              });
+              const settings = {
+                apiKey: apiKeyRow ? apiKeyRow.value : '',
+                userId: userIdRow ? userIdRow.value : '',
+                enabled: enabledRow ? enabledRow.value === 'true' : false,
+                senderId: senderIdRow ? senderIdRow.value : 'FINANCIALORG'
+              };
+              
+              resolve(settings);
             });
           });
         });
-      };
-      
-      // Call appropriate function based on table existence
-      if (!tableExists) {
-        createAndQuerySettings();
-      } else {
-        querySettings();
-      }
+      });
     });
   });
 });
 
 ipcMain.handle('update-sms-settings', async (event, settings) => {
   return new Promise((resolve, reject) => {
-    // First check if sms_settings table exists
-    db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='sms_settings'", (err, tableExists) => {
-      if (err) {
-        console.error('Error checking for sms_settings table:', err);
-        reject(err);
-        return;
-      }
-      
-      // If sms_settings table doesn't exist, create it
-      const createAndUpdateSettings = () => {
-        db.serialize(() => {
-          // Create table
-          db.run(`CREATE TABLE IF NOT EXISTS sms_settings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE,
-            value TEXT
-          )`, (err) => {
-            if (err) {
-              console.error('Error creating sms_settings table:', err);
-              reject(err);
-              return;
-            }
-            
-            // Now update the settings
-            updateSettings();
-          });
-        });
-      };
-      
+    // First ensure SMS tables exist
+    ensureSMSTables(() => {
       // Function to update settings in sms_settings table
-      const updateSettings = () => {
+      db.run('INSERT OR REPLACE INTO sms_settings (name, value) VALUES (?, ?)', 
+             ['sms_api_key', settings.apiKey], (err) => {
+        if (err) {
+          console.error('Error updating SMS API key:', err);
+          reject(err);
+          return;
+        }
+        
         db.run('INSERT OR REPLACE INTO sms_settings (name, value) VALUES (?, ?)', 
-               ['sms_api_key', settings.apiKey], (err) => {
+               ['sms_user_id', settings.userId], (err) => {
           if (err) {
-            console.error('Error updating SMS API key:', err);
+            console.error('Error updating SMS user ID:', err);
             reject(err);
             return;
           }
           
           db.run('INSERT OR REPLACE INTO sms_settings (name, value) VALUES (?, ?)', 
-                 ['sms_user_id', settings.userId], (err) => {
+                 ['sms_enabled', settings.enabled ? 'true' : 'false'], (err) => {
             if (err) {
-              console.error('Error updating SMS user ID:', err);
+              console.error('Error updating SMS enabled setting:', err);
               reject(err);
               return;
             }
             
             db.run('INSERT OR REPLACE INTO sms_settings (name, value) VALUES (?, ?)', 
-                   ['sms_enabled', settings.enabled ? 'true' : 'false'], (err) => {
+                   ['sms_sender_id', settings.senderId], (err) => {
               if (err) {
-                console.error('Error updating SMS enabled setting:', err);
+                console.error('Error updating SMS sender ID:', err);
                 reject(err);
                 return;
               }
               
-              db.run('INSERT OR REPLACE INTO sms_settings (name, value) VALUES (?, ?)', 
-                     ['sms_sender_id', settings.senderId], (err) => {
-                if (err) {
-                  console.error('Error updating SMS sender ID:', err);
-                  reject(err);
-                  return;
-                }
-                
-                resolve({ success: true });
-              });
+              resolve({ success: true });
             });
           });
         });
-      };
-      
-      // Call appropriate function based on table existence
-      if (!tableExists) {
-        createAndUpdateSettings();
-      } else {
-        updateSettings();
-      }
+      });
     });
   });
-}); 
+});
+
+// Function to ensure SMS-related tables exist
+const ensureSMSTables = (callback) => {
+  db.serialize(() => {
+    // Create sms_settings table if it doesn't exist
+    db.run(`CREATE TABLE IF NOT EXISTS sms_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE,
+      value TEXT
+    )`, (err) => {
+      if (err) {
+        console.error('Error creating sms_settings table:', err);
+        return;
+      }
+      
+      // Create sms_logs table if it doesn't exist
+      db.run(`CREATE TABLE IF NOT EXISTS sms_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        phone_number TEXT NOT NULL,
+        message TEXT NOT NULL,
+        status TEXT,
+        sent_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        response_data TEXT
+      )`, (err) => {
+        if (err) {
+          console.error('Error creating sms_logs table:', err);
+          return;
+        }
+        
+        // Insert default settings if not present
+        db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_api_key', '')", []);
+        db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_user_id', '')", []);
+        db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_enabled', 'false')", []);
+        db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_sender_id', 'FINANCIALORG')", []);
+        
+        if (callback) callback();
+      });
+    });
+  });
+}; 
