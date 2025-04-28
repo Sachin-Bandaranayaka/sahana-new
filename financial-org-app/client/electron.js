@@ -519,7 +519,7 @@ ipcMain.handle('get-member-transactions', async (event, memberId) => {
     const promises = [
       // Cashbook entries
       new Promise((resolve, reject) => {
-        db.all('SELECT id, date, description, amount, "cash" as type FROM cashbook WHERE memberId = ?', 
+        db.all('SELECT id, date, description, amount, CASE WHEN category = "Member Fee" THEN "member_fee" ELSE "cash" END as type FROM cashbook WHERE memberId = ?', 
           [memberId], (err, rows) => {
             if (err) reject(err);
             else resolve(rows || []);
@@ -2414,6 +2414,21 @@ const ensureSMSTables = (callback) => {
         db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_sender_id', 'FINANCIALORG')", []);
         
         if (callback) callback();
+      });
     });
   });
-}); 
+}; 
+
+// LOAN TYPES API
+ipcMain.handle('get-loan-types', async () => {
+  return new Promise((resolve, reject) => {
+    db.all('SELECT * FROM loan_types ORDER BY name', (err, rows) => {
+      if (err) {
+        console.error('Error fetching loan types:', err);
+        reject(err);
+      } else {
+        resolve(rows || []);
+      }
+    });
+  });
+});
