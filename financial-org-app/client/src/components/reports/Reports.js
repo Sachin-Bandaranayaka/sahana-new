@@ -62,7 +62,7 @@ const Reports = () => {
         if (result && Array.isArray(result)) {
           setMembers(result.map(member => ({
             id: member.id,
-            name: `${member.first_name} ${member.last_name}`
+            name: member.name
           })));
         }
       } catch (error) {

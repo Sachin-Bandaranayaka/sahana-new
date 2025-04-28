@@ -29,6 +29,7 @@ import ReceiptIcon from '@mui/icons-material/Receipt';
 import SavingsIcon from '@mui/icons-material/Savings';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PersonIcon from '@mui/icons-material/Person';
+import CalculateIcon from '@mui/icons-material/Calculate';
 
 const drawerWidth = 240;
 
@@ -38,6 +39,12 @@ const Layout = ({ user, onLogout }) => {
   const location = useLocation();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [mobileOpen, setMobileOpen] = useState(false);
+  
+  // Check if we're in development mode
+  const isDev = process.env.NODE_ENV === 'development';
+  
+  // Check if user is admin
+  const isAdmin = user && user.role === 'admin';
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -58,6 +65,15 @@ const Layout = ({ user, onLogout }) => {
     { text: 'Reports (වාර්තා)', icon: <AssessmentIcon />, path: '/reports' },
     { text: 'Settings (සැකසුම්)', icon: <SettingsIcon />, path: '/settings' },
   ];
+
+  // Add Interest Test Tool menu item for dev mode or admin users
+  if (isDev || isAdmin) {
+    menuItems.push({
+      text: 'Interest Test Tool',
+      icon: <CalculateIcon />,
+      path: '/interest-test'
+    });
+  }
 
   const drawer = (
     <div>

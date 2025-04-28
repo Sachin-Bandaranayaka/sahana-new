@@ -13,6 +13,7 @@ import Dividends from './components/dividends/Dividends';
 import Accounts from './components/accounts/Accounts';
 import Reports from './components/reports/Reports';
 import Settings from './components/settings/Settings';
+import InterestTestTool from './components/testing/InterestTestTool';
 import api from './services/api';
 import './index.css';
 
@@ -88,6 +89,7 @@ function App() {
               <Route path="accounts" element={<Accounts />} />
               <Route path="reports" element={<Reports />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="interest-test" element={<InterestTestTool />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>

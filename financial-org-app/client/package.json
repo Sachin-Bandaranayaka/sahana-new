@@ -26,6 +26,7 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
+    "test:interest": "node src/utils/testInterestCalculation.js",
     "eject": "react-scripts eject",
     "electron-dev": "concurrently \"cross-env BROWSER=none npm start\" \"wait-on http://localhost:3000 && electron .\"",
     "electron": "node start-electron.js",
@@ -56,6 +57,7 @@
   "proxy": "http://localhost:3000",
   "homepage": "./",
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
     "concurrently": "^8.2.2",
     "copyfiles": "^2.4.1",
     "cross-env": "^7.0.3",

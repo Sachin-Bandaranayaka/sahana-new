@@ -57,6 +57,7 @@ function createTables() {
       dailyInterest INTEGER DEFAULT 0,
       status TEXT DEFAULT 'active',
       balance REAL,
+      interest REAL DEFAULT 0,
       FOREIGN KEY(memberId) REFERENCES members(id)
     )`,
     `CREATE TABLE IF NOT EXISTS loan_payments (
@@ -65,6 +66,7 @@ function createTables() {
       date TEXT NOT NULL,
       amount REAL NOT NULL,
       note TEXT,
+      interestAmount REAL,
       FOREIGN KEY(loanId) REFERENCES loans(id)
     )`,
     `CREATE TABLE IF NOT EXISTS cashbook (
@@ -221,83 +223,56 @@ function createTables() {
 }
 
 function migrateTables() {
-  // Check if the members table has a member_id column, if not add it
-  db.get("SELECT 1 FROM pragma_table_info('members') WHERE name='member_id'", (err, row) => {
-    if (err) {
-      console.error('Error checking for member_id column:', err);
-      return;
-    }
-    
-    if (!row) {
-      console.log('Adding member_id column to members table...');
-      db.serialize(() => {
-        // Add the column
-        db.run("ALTER TABLE members ADD COLUMN member_id TEXT", (err) => {
-          if (err) {
-            console.error('Error adding member_id column:', err);
-            return;
-          }
-          console.log('Successfully added member_id column to members table');
-          
-          // Generate member IDs for existing members
-          db.all("SELECT id FROM members WHERE member_id IS NULL", (err, rows) => {
-            if (err) {
-              console.error('Error fetching members without member_id:', err);
-              return;
-            }
-            
-            rows.forEach(member => {
-              const memberId = `M${String(member.id).padStart(4, '0')}`;
-              db.run("UPDATE members SET member_id = ? WHERE id = ?", [memberId, member.id], (err) => {
-                if (err) {
-                  console.error(`Error updating member_id for member ${member.id}:`, err);
-                }
-              });
-            });
-          });
-        });
-        
-        // Add unique constraint after all members have IDs
-        db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_members_member_id ON members(member_id)", (err) => {
-          if (err) {
-            console.error('Error creating unique index on member_id:', err);
-          } else {
-            console.log('Successfully created unique index on member_id');
-          }
-        });
-      });
-    } else {
-      console.log('member_id column already exists in members table');
-    }
-  });
-  
-  // Check if the cashbook table has a memberId column, if not add it
-  db.get("PRAGMA table_info(cashbook)", (err, rows) => {
-    if (err) {
-      console.error('Error checking cashbook table schema:', err);
-      return;
-    }
-    
-    // Check if the memberId column exists
-    db.get("SELECT 1 FROM pragma_table_info('cashbook') WHERE name='memberId'", (err, row) => {
-      if (err) {
-        console.error('Error checking for memberId column:', err);
-        return;
-      }
+  // Create tables if they don't exist
+  const migrations = [
+    // Add any missing columns for loan_payments table
+    "PRAGMA table_info(loan_payments)",
+    (columns) => {
+      const columnNames = columns.map(col => col.name);
       
-      if (!row) {
-        console.log('Adding memberId column to cashbook table...');
-        db.run("ALTER TABLE cashbook ADD COLUMN memberId INTEGER REFERENCES members(id)", (err) => {
-          if (err) {
-            console.error('Error adding memberId column:', err);
-          } else {
-            console.log('Successfully added memberId column to cashbook table');
-          }
-        });
-      } else {
-        console.log('memberId column already exists in cashbook table');
+      if (!columnNames.includes('interestAmount')) {
+        return "ALTER TABLE loan_payments ADD COLUMN interestAmount REAL DEFAULT 0";
       }
-    });
+      return null;
+    },
+    
+    // Add any missing columns for loans table
+    "PRAGMA table_info(loans)",
+    (columns) => {
+      const columnNames = columns.map(col => col.name);
+      
+      if (!columnNames.includes('interest')) {
+        return "ALTER TABLE loans ADD COLUMN interest REAL DEFAULT 0";
+      }
+      return null;
+    }
+  ];
+
+  // Run migrations
+  db.serialize(() => {
+    for (let i = 0; i < migrations.length; i += 2) {
+      const query = migrations[i];
+      const migrationFn = migrations[i + 1];
+      
+      db.all(query, (err, results) => {
+        if (err) {
+          console.error(`Error in migration query ${query}:`, err);
+          return;
+        }
+        
+        const migrationQuery = migrationFn(results);
+        if (migrationQuery) {
+          console.log(`Running migration: ${migrationQuery}`);
+          db.run(migrationQuery, (err) => {
+            if (err) {
+              console.error(`Error in migration: ${migrationQuery}`, err);
+            } else {
+              console.log(`Migration completed: ${migrationQuery}`);
+            }
+          });
+        }
+      });
+    }
   });
 }
 
@@ -745,7 +720,7 @@ ipcMain.handle('delete-loan', async (event, id) => {
 
 ipcMain.handle('add-loan-payment', async (event, loanId, payment) => {
   return new Promise((resolve, reject) => {
-    const { date, amount, note } = payment;
+    const { date, amount, note, interestAmount } = payment;
     
     // First get the loan details to identify the member
     db.get('SELECT * FROM loans WHERE id = ?', [loanId], (err, loan) => {
@@ -759,10 +734,10 @@ ipcMain.handle('add-loan-payment', async (event, loanId, payment) => {
         return;
       }
       
-      // Now add the payment record
+      // Now add the payment record with interest information
       db.run(
-        'INSERT INTO loan_payments (loanId, date, amount, note) VALUES (?, ?, ?, ?)',
-        [loanId, date, amount, note],
+        'INSERT INTO loan_payments (loanId, date, amount, note, interestAmount) VALUES (?, ?, ?, ?, ?)',
+        [loanId, date, amount, note, interestAmount || 0],
         function(err) {
           if (err) {
             reject(err);
@@ -771,10 +746,10 @@ ipcMain.handle('add-loan-payment', async (event, loanId, payment) => {
           
           const paymentId = this.lastID;
           
-          // Then update the loan balance
+          // Then update the loan balance and record interest
           db.run(
-            'UPDATE loans SET balance = balance - ? WHERE id = ?',
-            [amount, loanId],
+            'UPDATE loans SET balance = balance - ?, interest = interest + ? WHERE id = ?',
+            [amount, interestAmount || 0, loanId],
             function(err) {
               if (err) {
                 reject(err);
@@ -786,6 +761,7 @@ ipcMain.handle('add-loan-payment', async (event, loanId, payment) => {
                 id: paymentId, 
                 loanId, 
                 memberId: loan.memberId, 
+                interestAmount: interestAmount || 0,
                 ...payment 
               });
             }
@@ -1771,446 +1747,408 @@ ipcMain.handle('calculate-quarterly-dividends-by-year', async (event, { year, di
   });
 });
 
-// Export functions for testing
-module.exports = { createWindow, createDatabase };
-
-ipcMain.handle('get-cashbook-entries', async () => {
-  return new Promise((resolve, reject) => {
-    db.all('SELECT * FROM cashbook ORDER BY date DESC', (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
+// Report Generation
+ipcMain.handle('generate-report', async (event, reportType, params) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const { dialog } = require('electron');
+    const XLSX = require('xlsx');
+    const PDFDocument = require('pdfkit');
+    
+    console.log(`Generating ${reportType} report with params:`, params);
+    
+    // Show save dialog to get output location
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Save Report',
+      defaultPath: `${reportType}-report.${params.format === 'pdf' ? 'pdf' : 'xlsx'}`,
+      filters: [{ 
+        name: params.format === 'pdf' ? 'PDF Documents' : 'Excel Spreadsheets', 
+        extensions: [params.format === 'pdf' ? 'pdf' : 'xlsx'] 
+      }]
     });
-  });
-});
-
-ipcMain.handle('get-cashbook-entries-by-date-range', async (event, startDate, endDate) => {
-  return new Promise((resolve, reject) => {
-    db.all(
-      'SELECT * FROM cashbook WHERE date >= ? AND date <= ? ORDER BY date DESC',
-      [startDate, endDate],
-      (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
-      }
-    );
-  });
-});
-
-ipcMain.handle('add-cashbook-entry', async (event, entry) => {
-  return new Promise((resolve, reject) => {
-    const { date, type, category, amount, description, memberId } = entry;
-    db.run(
-      'INSERT INTO cashbook (date, type, category, amount, description, memberId) VALUES (?, ?, ?, ?, ?, ?)',
-      [date, type, category, amount, description, memberId || null],
-      function(err) {
-        if (err) reject(err);
-        else resolve({ id: this.lastID, ...entry });
-      }
-    );
-  });
-});
-
-// Add Loan Types API handlers
-ipcMain.handle('get-loan-types', async () => {
-  return new Promise((resolve, reject) => {
-    db.all('SELECT * FROM loan_types ORDER BY name', (err, rows) => {
-      if (err) {
-        console.error('Error fetching loan types:', err);
-        reject(err);
-      } else {
-        console.log('Found loan types:', rows);
-        resolve(rows);
-      }
-    });
-  });
-});
-
-ipcMain.handle('add-loan-type', async (event, loanType) => {
-  return new Promise((resolve, reject) => {
-    db.run(
-      'INSERT INTO loan_types (name, interest_rate) VALUES (?, ?)',
-      [loanType.name, loanType.interestRate],
-      function(err) {
-        if (err) {
-          console.error('Error adding loan type:', err);
-          reject(err);
-          return;
-        }
-        
-        const newId = this.lastID;
-        resolve({
-          id: newId,
-          name: loanType.name,
-          interest_rate: loanType.interestRate
+    
+    if (canceled || !filePath) {
+      return { success: false, message: 'Report generation cancelled' };
+    }
+    
+    // Generate report data based on type
+    let reportData = { reportType, generatedAt: new Date().toISOString() };
+    let sheetData = [];
+    let pdfTitle = '';
+    
+    switch (reportType) {
+      case 'member-statement':
+        // Get member data
+        const member = await new Promise((resolve, reject) => {
+          db.get('SELECT * FROM members WHERE id = ?', [params.memberId], (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+          });
         });
-      }
-    );
-  });
-});
-
-ipcMain.handle('delete-loan-type', async (event, id) => {
-  return new Promise((resolve, reject) => {
-    // First check if any loans are using this loan type
-    db.get('SELECT COUNT(*) as count FROM loans WHERE loan_type = ? OR loanTypeId = ?', [id, id], (err, row) => {
-      if (err) {
-        console.error('Error checking loan type usage:', err);
-        reject(err);
-        return;
-      }
-      
-      if (row && row.count > 0) {
-        reject(new Error('Cannot delete loan type that is in use'));
-        return;
-      }
-      
-      // If not in use, delete it
-      db.run('DELETE FROM loan_types WHERE id = ?', [id], function(err) {
-        if (err) {
-          console.error('Error deleting loan type:', err);
-          reject(err);
-          return;
+        
+        if (!member) {
+          return { success: false, message: 'Member not found' };
         }
         
-        if (this.changes === 0) {
-          reject(new Error('Loan type not found'));
-          return;
-        }
+        // Get member transactions
+        const transactions = await new Promise((resolve, reject) => {
+          db.all(
+            'SELECT * FROM cashbook WHERE memberId = ? AND date BETWEEN ? AND ? ORDER BY date DESC',
+            [params.memberId, params.startDate, params.endDate],
+            (err, rows) => {
+              if (err) reject(err);
+              else resolve(rows || []);
+            }
+          );
+        });
         
-        resolve({ success: true });
+        // Get member loans
+        const loans = await new Promise((resolve, reject) => {
+          db.all(
+            'SELECT * FROM loans WHERE memberId = ? ORDER BY startDate DESC',
+            [params.memberId],
+            (err, rows) => {
+              if (err) reject(err);
+              else resolve(rows || []);
+            }
+          );
+        });
+        
+        reportData.member = member;
+        reportData.transactions = transactions;
+        reportData.loans = loans;
+        pdfTitle = `Member Statement - ${member.name}`;
+        
+        // Format data for Excel
+        sheetData = [
+          ['Member Statement'],
+          ['Member ID', member.member_id],
+          ['Name', member.name],
+          ['Join Date', member.joinDate],
+          ['Status', member.status],
+          [''],
+          ['Transactions'],
+          ['Date', 'Type', 'Category', 'Description', 'Amount']
+        ];
+        
+        // Add transactions
+        transactions.forEach(t => {
+          sheetData.push([
+            new Date(t.date).toLocaleDateString(),
+            t.type,
+            t.category || '',
+            t.description || '',
+            t.amount
+          ]);
+        });
+        
+        // Add loans section
+        sheetData.push([''], ['Loans'], ['Start Date', 'Amount', 'Interest Rate', 'Balance', 'Purpose']);
+        loans.forEach(loan => {
+          sheetData.push([
+            new Date(loan.startDate).toLocaleDateString(),
+            loan.amount,
+            loan.interestRate + '%',
+            loan.balance,
+            loan.purpose || ''
+          ]);
+        });
+        break;
+        
+      case 'cash-flow':
+        // Get income and expense transactions
+        const cashflow = await new Promise((resolve, reject) => {
+          db.all(
+            'SELECT type, category, SUM(amount) as total FROM cashbook WHERE date BETWEEN ? AND ? GROUP BY type, category',
+            [params.startDate, params.endDate],
+            (err, rows) => {
+              if (err) reject(err);
+              else resolve(rows || []);
+            }
+          );
+        });
+        
+        reportData.cashflow = cashflow;
+        pdfTitle = 'Cash Flow Report';
+        
+        // Format data for Excel
+        sheetData = [
+          ['Cash Flow Report'],
+          [`Period: ${new Date(params.startDate).toLocaleDateString()} to ${new Date(params.endDate).toLocaleDateString()}`],
+          [''],
+          ['Type', 'Category', 'Total Amount']
+        ];
+        
+        // Calculate totals
+        let totalIncome = 0;
+        let totalExpense = 0;
+        
+        // Add cashflow data
+        cashflow.forEach(flow => {
+          sheetData.push([flow.type, flow.category, flow.total]);
+          if (flow.type === 'income') totalIncome += flow.total;
+          else if (flow.type === 'expense') totalExpense += flow.total;
+        });
+        
+        // Add summary row
+        sheetData.push([''], ['Summary'], ['Total Income', totalIncome], ['Total Expense', totalExpense], ['Net Cash Flow', totalIncome - totalExpense]);
+        
+        break;
+        
+      case 'loan-summary':
+        // Get active loans
+        const activeLoans = await new Promise((resolve, reject) => {
+          db.all(
+            'SELECT l.*, m.name as memberName FROM loans l JOIN members m ON l.memberId = m.id WHERE l.status = "active"',
+            (err, rows) => {
+              if (err) reject(err);
+              else resolve(rows || []);
+            }
+          );
+        });
+        
+        // Get loan payments in the period
+        const payments = await new Promise((resolve, reject) => {
+          db.all(
+            'SELECT lp.*, l.memberId, m.name as memberName FROM loan_payments lp JOIN loans l ON lp.loanId = l.id JOIN members m ON l.memberId = m.id WHERE lp.date BETWEEN ? AND ?',
+            [params.startDate, params.endDate],
+            (err, rows) => {
+              if (err) reject(err);
+              else resolve(rows || []);
+            }
+          );
+        });
+        
+        reportData.loans = activeLoans;
+        reportData.payments = payments;
+        pdfTitle = 'Loan Summary Report';
+        
+        // Format data for Excel
+        sheetData = [
+          ['Loan Summary Report'],
+          [`Period: ${new Date(params.startDate).toLocaleDateString()} to ${new Date(params.endDate).toLocaleDateString()}`],
+          [''],
+          ['Active Loans'],
+          ['Member', 'Start Date', 'Amount', 'Interest Rate', 'Balance', 'Purpose']
+        ];
+        
+        // Add active loans
+        activeLoans.forEach(loan => {
+          sheetData.push([
+            loan.memberName,
+            new Date(loan.startDate).toLocaleDateString(),
+            loan.amount,
+            loan.interestRate + '%',
+            loan.balance,
+            loan.purpose || ''
+          ]);
+        });
+        
+        // Add payment section
+        sheetData.push([''], ['Recent Payments'], ['Date', 'Member', 'Amount', 'Note']);
+        payments.forEach(payment => {
+          sheetData.push([
+            new Date(payment.date).toLocaleDateString(),
+            payment.memberName,
+            payment.amount,
+            payment.note || ''
+          ]);
+        });
+        break;
+        
+      case 'quarterly-profit':
+        // Get income totals
+        const income = await new Promise((resolve, reject) => {
+          db.get(
+            'SELECT SUM(amount) as total FROM cashbook WHERE type = "income" AND date BETWEEN ? AND ?',
+            [params.startDate, params.endDate],
+            (err, row) => {
+              if (err) reject(err);
+              else resolve(row || { total: 0 });
+            }
+          );
+        });
+        
+        // Get expense totals
+        const expenses = await new Promise((resolve, reject) => {
+          db.get(
+            'SELECT SUM(amount) as total FROM cashbook WHERE type = "expense" AND date BETWEEN ? AND ?',
+            [params.startDate, params.endDate],
+            (err, row) => {
+              if (err) reject(err);
+              else resolve(row || { total: 0 });
+            }
+          );
+        });
+        
+        // Calculate profit
+        const incomeTotal = income.total || 0;
+        const expenseTotal = expenses.total || 0;
+        const profit = incomeTotal - expenseTotal;
+        
+        reportData.income = incomeTotal;
+        reportData.expenses = expenseTotal;
+        reportData.profit = profit;
+        pdfTitle = 'Quarterly Profit Report';
+        
+        // Format data for Excel
+        sheetData = [
+          ['Quarterly Profit Report'],
+          [`Period: ${new Date(params.startDate).toLocaleDateString()} to ${new Date(params.endDate).toLocaleDateString()}`],
+          [''],
+          ['Income', incomeTotal],
+          ['Expenses', expenseTotal],
+          ['Profit', profit],
+          [''],
+          ['Profit percentage', profit > 0 ? ((profit / incomeTotal) * 100).toFixed(2) + '%' : '0%']
+        ];
+        break;
+        
+      case 'balance-sheet':
+        // Get assets
+        const cashAssets = await new Promise((resolve, reject) => {
+          db.get(
+            'SELECT SUM(amount) as total FROM cashbook WHERE type = "income"',
+            (err, row) => {
+              if (err) reject(err);
+              else resolve(row || { total: 0 });
+            }
+          );
+        });
+        
+        const cashLiabilities = await new Promise((resolve, reject) => {
+          db.get(
+            'SELECT SUM(amount) as total FROM cashbook WHERE type = "expense"',
+            (err, row) => {
+              if (err) reject(err);
+              else resolve(row || { total: 0 });
+            }
+          );
+        });
+        
+        const loanAssets = await new Promise((resolve, reject) => {
+          db.get(
+            'SELECT SUM(balance) as total FROM loans WHERE status = "active"',
+            (err, row) => {
+              if (err) reject(err);
+              else resolve(row || { total: 0 });
+            }
+          );
+        });
+        
+        const bankBalances = await new Promise((resolve, reject) => {
+          db.get(
+            'SELECT SUM(balance) as total FROM bank_accounts',
+            (err, row) => {
+              if (err) reject(err);
+              else resolve(row || { total: 0 });
+            }
+          );
+        });
+        
+        const cashBalance = (cashAssets.total || 0) - (cashLiabilities.total || 0);
+        const loanBalance = loanAssets.total || 0;
+        const bankBalance = bankBalances.total || 0;
+        const totalAssets = cashBalance + loanBalance + bankBalance;
+        
+        reportData.balanceSheet = {
+          assets: {
+            cash: cashBalance,
+            loans: loanBalance,
+            bank: bankBalance,
+            total: totalAssets
+          }
+        };
+        pdfTitle = 'Balance Sheet Report';
+        
+        // Format data for Excel
+        sheetData = [
+          ['Balance Sheet Report'],
+          [`As of: ${new Date().toLocaleDateString()}`],
+          [''],
+          ['Assets'],
+          ['Cash Balance', cashBalance],
+          ['Outstanding Loans', loanBalance],
+          ['Bank Deposits', bankBalance],
+          ['Total Assets', totalAssets]
+        ];
+        break;
+        
+      default:
+        return { success: false, message: 'Invalid report type' };
+    }
+    
+    // Add period to report data
+    reportData.period = {
+      startDate: params.startDate,
+      endDate: params.endDate
+    };
+    
+    // Generate the file in requested format
+    if (params.format === 'pdf') {
+      // Create PDF file
+      const doc = new PDFDocument();
+      const stream = fs.createWriteStream(filePath);
+      
+      doc.pipe(stream);
+      
+      // Add title
+      doc.fontSize(16).text(pdfTitle, { align: 'center' });
+      doc.moveDown();
+      
+      // Add period
+      doc.fontSize(12).text(`Period: ${new Date(params.startDate).toLocaleDateString()} to ${new Date(params.endDate).toLocaleDateString()}`, { align: 'center' });
+      doc.moveDown();
+      
+      // Add data from sheetData
+      sheetData.forEach(row => {
+        if (row.length === 0 || row[0] === '') {
+          doc.moveDown();
+        } else if (row.length === 1) {
+          // Section header
+          doc.fontSize(14).text(row[0]);
+          doc.moveDown();
+        } else {
+          // Regular row
+          const text = row.join(': ');
+          doc.fontSize(10).text(text);
+        }
       });
-    });
-  });
+      
+      // Finalize PDF
+      doc.end();
+      
+      // Wait for the stream to finish
+      await new Promise((resolve, reject) => {
+        stream.on('finish', resolve);
+        stream.on('error', reject);
+      });
+      
+    } else {
+      // Create Excel file
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(sheetData);
+      
+      // Add some styling
+      ws['!cols'] = [{ wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 15 }];
+      
+      XLSX.utils.book_append_sheet(wb, ws, "Report");
+      XLSX.writeFile(wb, filePath);
+    }
+    
+    console.log(`Report saved to ${filePath}`);
+    
+    return { 
+      success: true, 
+      message: `Report generated successfully and saved to ${filePath}`,
+      filePath
+    };
+  } catch (error) {
+    console.error('Error generating report:', error);
+    return { success: false, message: error.message };
+  }
 });
 
-// SMS Services
-ipcMain.handle('send-sms', async (event, phoneNumber, message) => {
-  return new Promise((resolve, reject) => {
-    // First check if sms_settings table exists
-    db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='sms_settings'", (err, tableExists) => {
-      if (err) {
-        console.error('Error checking for sms_settings table:', err);
-        reject(err);
-        return;
-      }
-      
-      // If sms_settings table doesn't exist, create it
-      const createAndQuerySettings = () => {
-        db.serialize(() => {
-          // Create table
-          db.run(`CREATE TABLE IF NOT EXISTS sms_settings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE,
-            value TEXT
-          )`, (err) => {
-            if (err) {
-              console.error('Error creating sms_settings table:', err);
-              reject(err);
-              return;
-            }
-            
-            // Insert default settings if not present
-            db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_api_key', '')", []);
-            db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_user_id', '')", []);
-            db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_enabled', 'false')", []);
-            db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_sender_id', 'FINANCIALORG')", []);
-            
-            // Now query the settings
-            querySettings();
-          });
-        });
-      };
-      
-      // Function to query settings from sms_settings table
-      const querySettings = () => {
-        db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_api_key'], (err, apiKeyRow) => {
-          if (err) {
-            console.error('Error getting SMS API key:', err);
-            reject(err);
-            return;
-          }
-          
-          db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_user_id'], (err, userIdRow) => {
-            if (err) {
-              console.error('Error getting SMS user ID:', err);
-              reject(err);
-              return;
-            }
-            
-            db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_enabled'], (err, enabledRow) => {
-              if (err) {
-                console.error('Error getting SMS enabled setting:', err);
-                reject(err);
-                return;
-              }
-              
-              db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_sender_id'], (err, senderIdRow) => {
-                if (err) {
-                  console.error('Error getting SMS sender ID:', err);
-                  reject(err);
-                  return;
-                }
-                
-                const apiKey = apiKeyRow ? apiKeyRow.value : '';
-                const userId = userIdRow ? userIdRow.value : '';
-                const enabled = enabledRow ? enabledRow.value === 'true' : false;
-                const senderId = senderIdRow ? senderIdRow.value : 'FINANCIALORG';
-                
-                // Check if SMS is enabled
-                if (!enabled || !apiKey || !userId) {
-                  console.log('SMS is disabled or API credentials not set');
-                  resolve({ success: false, error: 'SMS is disabled or API credentials not set' });
-                  return;
-                }
-                
-                // Format phone number
-                let formattedPhone = phoneNumber.replace(/\D/g, '');
-                if (formattedPhone.startsWith('0')) {
-                  formattedPhone = formattedPhone.substring(1);
-                }
-                if (!formattedPhone.startsWith('94')) {
-                  formattedPhone = '94' + formattedPhone;
-                }
-                
-                // Send SMS using notify.lk API
-                const axios = require('axios');
-                const https = require('https');
-                
-                const params = new URLSearchParams();
-                params.append('user_id', userId);
-                params.append('api_key', apiKey);
-                params.append('sender_id', senderId);
-                params.append('to', formattedPhone);
-                params.append('message', message);
-                
-                axios.post('https://app.notify.lk/api/v1/send', params, {
-                  headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                  },
-                  httpsAgent: new https.Agent({
-                    rejectUnauthorized: false
-                  })
-                })
-                .then(response => {
-                  // Log SMS in database
-                  db.run(
-                    'INSERT INTO sms_logs (phone_number, message, status, response_data) VALUES (?, ?, ?, ?)',
-                    [formattedPhone, message, response.data.status, JSON.stringify(response.data)],
-                    (err) => {
-                      if (err) {
-                        console.error('Error logging SMS:', err);
-                      }
-                      
-                      resolve({ 
-                        success: response.data.status === 'success',
-                        data: response.data
-                      });
-                    }
-                  );
-                })
-                .catch(error => {
-                  console.error('Error sending SMS:', error);
-                  
-                  // Log the error
-                  db.run(
-                    'INSERT INTO sms_logs (phone_number, message, status, response_data) VALUES (?, ?, ?, ?)',
-                    [formattedPhone, message, 'error', JSON.stringify({ error: error.message })],
-                    (err) => {
-                      if (err) {
-                        console.error('Error logging SMS error:', err);
-                      }
-                      
-                      resolve({ 
-                        success: false, 
-                        error: error.message 
-                      });
-                    }
-                  );
-                });
-              });
-            });
-          });
-        });
-      };
-      
-      // Call appropriate function based on table existence
-      if (!tableExists) {
-        createAndQuerySettings();
-      } else {
-        querySettings();
-      }
-    });
-  });
-});
-
-ipcMain.handle('get-sms-settings', async () => {
-  return new Promise((resolve, reject) => {
-    // First check if sms_settings table exists
-    db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='sms_settings'", (err, tableExists) => {
-      if (err) {
-        console.error('Error checking for sms_settings table:', err);
-        reject(err);
-        return;
-      }
-      
-      // If sms_settings table doesn't exist, create it
-      const createAndQuerySettings = () => {
-        db.serialize(() => {
-          // Create table
-          db.run(`CREATE TABLE IF NOT EXISTS sms_settings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE,
-            value TEXT
-          )`, (err) => {
-            if (err) {
-              console.error('Error creating sms_settings table:', err);
-              reject(err);
-              return;
-            }
-            
-            // Insert default settings if not present
-            db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_api_key', '')", []);
-            db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_user_id', '')", []);
-            db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_enabled', 'false')", []);
-            db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_sender_id', 'FINANCIALORG')", []);
-            
-            // Now query the settings
-            querySettings();
-          });
-        });
-      };
-      
-      // Function to query settings from sms_settings table
-      const querySettings = () => {
-        db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_api_key'], (err, apiKeyRow) => {
-          if (err) {
-            console.error('Error getting SMS API key:', err);
-            reject(err);
-            return;
-          }
-          
-          db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_user_id'], (err, userIdRow) => {
-            if (err) {
-              console.error('Error getting SMS user ID:', err);
-              reject(err);
-              return;
-            }
-            
-            db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_enabled'], (err, enabledRow) => {
-              if (err) {
-                console.error('Error getting SMS enabled setting:', err);
-                reject(err);
-                return;
-              }
-              
-              db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_sender_id'], (err, senderIdRow) => {
-                if (err) {
-                  console.error('Error getting SMS sender ID:', err);
-                  reject(err);
-                  return;
-                }
-                
-                const settings = {
-                  apiKey: apiKeyRow ? apiKeyRow.value : '',
-                  userId: userIdRow ? userIdRow.value : '',
-                  enabled: enabledRow ? enabledRow.value === 'true' : false,
-                  senderId: senderIdRow ? senderIdRow.value : 'FINANCIALORG'
-                };
-                
-                resolve(settings);
-              });
-            });
-          });
-        });
-      };
-      
-      // Call appropriate function based on table existence
-      if (!tableExists) {
-        createAndQuerySettings();
-      } else {
-        querySettings();
-      }
-    });
-  });
-});
-
-ipcMain.handle('update-sms-settings', async (event, settings) => {
-  return new Promise((resolve, reject) => {
-    // First check if sms_settings table exists
-    db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='sms_settings'", (err, tableExists) => {
-      if (err) {
-        console.error('Error checking for sms_settings table:', err);
-        reject(err);
-        return;
-      }
-      
-      // If sms_settings table doesn't exist, create it
-      const createAndUpdateSettings = () => {
-        db.serialize(() => {
-          // Create table
-          db.run(`CREATE TABLE IF NOT EXISTS sms_settings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE,
-            value TEXT
-          )`, (err) => {
-            if (err) {
-              console.error('Error creating sms_settings table:', err);
-              reject(err);
-              return;
-            }
-            
-            // Now update the settings
-            updateSettings();
-          });
-        });
-      };
-      
-      // Function to update settings in sms_settings table
-      const updateSettings = () => {
-        db.run('INSERT OR REPLACE INTO sms_settings (name, value) VALUES (?, ?)', 
-               ['sms_api_key', settings.apiKey], (err) => {
-          if (err) {
-            console.error('Error updating SMS API key:', err);
-            reject(err);
-            return;
-          }
-          
-          db.run('INSERT OR REPLACE INTO sms_settings (name, value) VALUES (?, ?)', 
-                 ['sms_user_id', settings.userId], (err) => {
-            if (err) {
-              console.error('Error updating SMS user ID:', err);
-              reject(err);
-              return;
-            }
-            
-            db.run('INSERT OR REPLACE INTO sms_settings (name, value) VALUES (?, ?)', 
-                   ['sms_enabled', settings.enabled ? 'true' : 'false'], (err) => {
-              if (err) {
-                console.error('Error updating SMS enabled setting:', err);
-                reject(err);
-                return;
-              }
-              
-              db.run('INSERT OR REPLACE INTO sms_settings (name, value) VALUES (?, ?)', 
-                     ['sms_sender_id', settings.senderId], (err) => {
-                if (err) {
-                  console.error('Error updating SMS sender ID:', err);
-                  reject(err);
-                  return;
-                }
-                
-                resolve({ success: true });
-              });
-            });
-          });
-        });
-      };
-      
-      // Call appropriate function based on table existence
-      if (!tableExists) {
-        createAndUpdateSettings();
-      } else {
-        updateSettings();
-      }
-    });
-  });
-}); 
+// Export functions for testing
+module.exports = { createWindow, createDatabase }; 

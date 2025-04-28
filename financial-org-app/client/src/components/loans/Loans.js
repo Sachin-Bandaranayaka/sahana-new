@@ -35,6 +35,7 @@ import {
 } from '@mui/icons-material';
 import api from '../../services/api';
 import smsService from '../../services/smsService';
+import otpService, { OTP_OPERATIONS } from '../../services/otpService';
 
 const Loans = () => {
   const [loans, setLoans] = useState([]);
@@ -42,6 +43,7 @@ const Loans = () => {
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [openPaymentDialog, setOpenPaymentDialog] = useState(false);
+  const [openOtpDialog, setOpenOtpDialog] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [currentLoan, setCurrentLoan] = useState(null);
   const [page, setPage] = useState(0);
@@ -70,6 +72,12 @@ const Loans = () => {
     severity: 'success'
   });
   const [loanTypes, setLoanTypes] = useState([]);
+  const [otpData, setOtpData] = useState({
+    otpToken: '',
+    otpCode: '',
+    isLoading: false,
+    error: ''
+  });
 
   useEffect(() => {
     fetchLoans();
@@ -77,11 +85,51 @@ const Loans = () => {
     fetchLoanTypes();
   }, []);
 
+  // Calculate accrued interest for a loan
+  const calculateAccruedInterest = (loan) => {
+    if (!loan || !loan.startDate) return 0;
+    
+    // Get the last payment date or loan start date
+    const lastPaymentDate = loan.payments && loan.payments.length > 0 
+      ? new Date(Math.max(...loan.payments.map(p => new Date(p.date).getTime())))
+      : new Date(loan.startDate);
+    
+    const today = new Date();
+    const daysDiff = Math.floor((today - lastPaymentDate) / (1000 * 60 * 60 * 24));
+    
+    // Handle daily vs monthly interest
+    let interestAmount = 0;
+    const interestRate = loan.interestRate / 100;
+    
+    if (loan.dailyInterest) {
+      // Daily interest calculation
+      const dailyRate = interestRate / 365;
+      interestAmount = loan.balance * dailyRate * daysDiff;
+    } else {
+      // Monthly interest calculation (30 days per month)
+      const monthlyRate = interestRate / 12;
+      const monthsElapsed = daysDiff / 30;
+      interestAmount = loan.balance * monthlyRate * monthsElapsed;
+    }
+    
+    return interestAmount;
+  };
+
   const fetchLoans = async () => {
     setLoading(true);
     try {
       const data = await api.getLoans();
-      setLoans(data);
+      
+      // Calculate interest for each loan
+      const loansWithInterest = data.map(loan => {
+        const interest = calculateAccruedInterest(loan);
+        return {
+          ...loan,
+          interest: interest
+        };
+      });
+      
+      setLoans(loansWithInterest);
       setLoading(false);
     } catch (error) {
       console.error("Error fetching loans:", error);
@@ -140,18 +188,85 @@ const Loans = () => {
     
     if (mode === 'edit' && loan) {
       setCurrentLoan(loan);
-      setFormData({
-        memberId: loan.memberId,
-        amount: loan.amount,
-        interestRate: loan.interestRate,
-        loanTypeId: loan.loanTypeId || '',
-        startDate: loan.startDate,
-        endDate: loan.endDate || '',
-        purpose: loan.purpose,
-        dailyInterest: loan.dailyInterest,
-        status: loan.status,
-        payments: loan.payments
-      });
+
+      // For edit mode, get the member's phone number and send OTP first
+      const requestOtpAndOpenDialog = async () => {
+        try {
+          // Get member details to find phone number
+          const member = await api.getMember(loan.memberId);
+          if (!member || !member.phone) {
+            setSnackbar({
+              open: true,
+              message: 'Member has no phone number for OTP verification',
+              severity: 'error'
+            });
+            return;
+          }
+
+          // Request OTP
+          setOtpData({
+            ...otpData,
+            isLoading: true,
+            error: ''
+          });
+
+          const result = await otpService.generateAndSendOTP(
+            member.phone, 
+            OTP_OPERATIONS.LOAN_EDIT
+          );
+
+          if (result.success) {
+            setOtpData({
+              ...otpData,
+              otpToken: result.otpToken,
+              isLoading: false
+            });
+            
+            // Set up the form data but open OTP dialog instead
+            setFormData({
+              memberId: loan.memberId,
+              amount: loan.amount,
+              interestRate: loan.interestRate,
+              loanTypeId: loan.loanTypeId || '',
+              startDate: loan.startDate,
+              endDate: loan.endDate || '',
+              purpose: loan.purpose,
+              dailyInterest: loan.dailyInterest,
+              status: loan.status,
+              payments: loan.payments
+            });
+            
+            setOpenOtpDialog(true);
+          } else {
+            setOtpData({
+              ...otpData,
+              isLoading: false,
+              error: result.error || 'Failed to send OTP'
+            });
+            
+            setSnackbar({
+              open: true,
+              message: `Failed to send OTP: ${result.error || 'Unknown error'}`,
+              severity: 'error'
+            });
+          }
+        } catch (error) {
+          console.error("Error requesting OTP:", error);
+          setOtpData({
+            ...otpData,
+            isLoading: false,
+            error: 'Failed to process OTP request'
+          });
+          
+          setSnackbar({
+            open: true,
+            message: 'Failed to process OTP request',
+            severity: 'error'
+          });
+        }
+      };
+
+      requestOtpAndOpenDialog();
     } else {
       setCurrentLoan(null);
       const defaultLoanType = loanTypes.length > 0 ? loanTypes[0] : null;
@@ -167,9 +282,9 @@ const Loans = () => {
         status: 'active',
         payments: []
       });
+      
+      setOpenDialog(true);
     }
-    
-    setOpenDialog(true);
   };
 
   const handleOpenPaymentDialog = (loan) => {
@@ -269,6 +384,16 @@ const Loans = () => {
     
     try {
       if (editMode && currentLoan) {
+        // Verify that the OTP has been verified before allowing edits
+        if (!otpService.isOperationVerified(otpData.otpToken)) {
+          setSnackbar({
+            open: true,
+            message: 'OTP verification required before editing a loan',
+            severity: 'error'
+          });
+          return;
+        }
+        
         const updatedLoan = {
           ...formData,
           memberId: parseInt(formData.memberId),
@@ -337,10 +462,14 @@ const Loans = () => {
     if (!validatePaymentForm()) return;
     
     try {
+      // Calculate accrued interest up to the payment date
+      const interestToDate = calculateAccruedInterest(currentLoan);
+      
       const newPayment = {
         date: paymentData.date,
         amount: parseFloat(paymentData.amount),
-        note: paymentData.note
+        note: paymentData.note,
+        interestAmount: interestToDate // Include the interest amount in the payment
       };
       
       await api.addLoanPayment(currentLoan.id, newPayment);
@@ -435,6 +564,66 @@ const Loans = () => {
 
   const formatCurrency = (amount) => {
     return amount !== undefined && amount !== null ? `Rs. ${amount.toLocaleString()}` : 'Rs. 0';
+  };
+
+  const handleCloseOtpDialog = () => {
+    setOpenOtpDialog(false);
+    setOtpData({
+      ...otpData,
+      otpCode: '',
+      error: ''
+    });
+  };
+
+  const handleOtpInputChange = (e) => {
+    setOtpData({
+      ...otpData,
+      otpCode: e.target.value,
+      error: ''
+    });
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!otpData.otpCode || otpData.otpCode.trim() === '') {
+      setOtpData({
+        ...otpData,
+        error: 'Please enter the OTP code'
+      });
+      return;
+    }
+
+    try {
+      setOtpData({
+        ...otpData,
+        isLoading: true
+      });
+
+      const result = await otpService.verifyOTP(otpData.otpToken, otpData.otpCode);
+
+      if (result.success) {
+        // OTP verified successfully, proceed to open edit dialog
+        setOtpData({
+          ...otpData,
+          isLoading: false
+        });
+        
+        handleCloseOtpDialog();
+        setOpenDialog(true);
+      } else {
+        setOtpData({
+          ...otpData,
+          isLoading: false,
+          error: result.error || 'Invalid OTP code'
+        });
+      }
+    } catch (error) {
+      console.error("Error verifying OTP:", error);
+      setOtpData({
+        ...otpData,
+        isLoading: false,
+        error: 'Failed to verify OTP'
+      });
+    }
   };
 
   return (
@@ -725,8 +914,13 @@ const Loans = () => {
                 Loan for: (ණය ලබාගත්තේ:) {currentLoan ? members.find(m => m.id === currentLoan.memberId)?.name : ''}
               </Typography>
               <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
-                Balance: (ශේෂය:) {currentLoan ? formatCurrency(calculateBalance(currentLoan)) : ''}
+                Balance: (ශේෂය:) {currentLoan ? formatCurrency(currentLoan.balance) : ''}
               </Typography>
+              {currentLoan && (
+                <Typography variant="body2" color="primary" sx={{ mt: 1 }}>
+                  Accrued Interest: (පොලිය:) {formatCurrency(calculateAccruedInterest(currentLoan))}
+                </Typography>
+              )}
             </Grid>
             <Grid item xs={12}>
               <TextField
@@ -778,19 +972,58 @@ const Loans = () => {
         </DialogActions>
       </Dialog>
 
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={handleCloseSnackbar}
-      >
-        <Alert 
-          onClose={handleCloseSnackbar} 
-          severity={snackbar.severity}
-          sx={{ width: '100%' }}
-        >
+      <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={handleCloseSnackbar}>
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      {/* OTP Verification Dialog */}
+      <Dialog open={openOtpDialog} onClose={handleCloseOtpDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>
+          Verify OTP (තහවුරු කිරීමේ කේතය)
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <Typography variant="body1" gutterBottom>
+              An OTP code has been sent to the member's phone for loan edit verification.
+            </Typography>
+            <Typography variant="body2" gutterBottom sx={{ mb: 2 }}>
+              Please enter the 6-digit code below to proceed with editing the loan.
+            </Typography>
+            <TextField
+              label="OTP Code"
+              variant="outlined"
+              fullWidth
+              value={otpData.otpCode}
+              onChange={handleOtpInputChange}
+              error={!!otpData.error}
+              helperText={otpData.error}
+              type="number"
+              autoFocus
+              inputProps={{ 
+                maxLength: 6,
+                pattern: '[0-9]*',
+                inputMode: 'numeric'
+              }}
+              placeholder="Enter 6-digit code"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseOtpDialog} color="primary">
+            Cancel (අවලංගු කරන්න)
+          </Button>
+          <Button 
+            onClick={handleVerifyOtp} 
+            color="primary" 
+            variant="contained"
+            disabled={otpData.isLoading}
+          >
+            {otpData.isLoading ? 'Verifying...' : 'Verify (තහවුරු කරන්න)'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
