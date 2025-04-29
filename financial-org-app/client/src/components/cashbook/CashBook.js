@@ -244,24 +244,39 @@ const CashBook = () => {
         
         await api.addCashEntry(newTransaction);
         
-        // Send SMS notification for member fee payment
-        if (formData.type === 'income' && 
-            formData.category === 'Membership Fee (සාමාජික ගාස්තු)' && 
-            formData.memberId) {
+        // Send SMS notification based on transaction category
+        if (formData.type === 'income' && formData.memberId) {
           try {
             // Get member details to get the phone number
             const member = await api.getMember(formData.memberId);
             if (member && member.phone) {
-              // Send the SMS
-              const smsResult = await smsService.sendMemberFeeSMS(
-                member.phone,
-                parseFloat(formData.amount)
-              );
+              let smsResult;
               
-              console.log('Member fee payment SMS result:', smsResult);
+              // Send different SMS based on the category
+              if (formData.category === 'Membership Fee (සාමාජික ගාස්තු)') {
+                smsResult = await smsService.sendMemberFeeSMS(
+                  member.phone,
+                  parseFloat(formData.amount)
+                );
+                console.log('Member fee payment SMS result:', smsResult);
+              } 
+              else if (formData.category === 'Loan Interest (ණය පොලී)') {
+                smsResult = await smsService.sendLoanInterestSMS(
+                  member.phone,
+                  parseFloat(formData.amount)
+                );
+                console.log('Loan interest payment SMS result:', smsResult);
+              }
+              else if (formData.category === 'Contribution (දායකත්වය)') {
+                smsResult = await smsService.sendContributionSMS(
+                  member.phone,
+                  parseFloat(formData.amount)
+                );
+                console.log('Contribution payment SMS result:', smsResult);
+              }
             }
           } catch (smsError) {
-            console.error('Error sending member fee payment SMS:', smsError);
+            console.error(`Error sending ${formData.category} SMS:`, smsError);
           }
         }
         

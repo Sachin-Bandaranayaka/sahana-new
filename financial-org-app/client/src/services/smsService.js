@@ -6,6 +6,8 @@ const SMS_TEMPLATES = {
   LOAN_ISSUED: "Dear member, a loan of Rs. {{amount}} has been issued to you. Reference ID: {{loanId}}",
   LOAN_PAYMENT: "Thank you for your payment of Rs. {{amount}} towards loan ID {{loanId}}. Remaining balance: Rs. {{balance}}",
   MEMBER_FEE: "Thank you for your member fee payment of Rs. {{amount}}. Your payment has been recorded successfully.",
+  LOAN_INTEREST: "Thank you for your loan interest payment of Rs. {{amount}}. Your payment has been recorded successfully.",
+  CONTRIBUTION: "Thank you for your contribution of Rs. {{amount}}. Your payment has been recorded successfully.",
 };
 
 // SMS sending function that will be exposed through preload.js
@@ -55,6 +57,26 @@ const smsService = {
     if (!memberPhone) return { success: false, error: 'No phone number provided' };
     
     const message = smsService.formatMessage(SMS_TEMPLATES.MEMBER_FEE, { 
+      amount: amount.toLocaleString() 
+    });
+    return await window.api.sendSMS(memberPhone, message);
+  },
+  
+  // Send SMS for loan interest payment
+  sendLoanInterestSMS: async (memberPhone, amount) => {
+    if (!memberPhone) return { success: false, error: 'No phone number provided' };
+    
+    const message = smsService.formatMessage(SMS_TEMPLATES.LOAN_INTEREST, { 
+      amount: amount.toLocaleString() 
+    });
+    return await window.api.sendSMS(memberPhone, message);
+  },
+  
+  // Send SMS for contribution payment
+  sendContributionSMS: async (memberPhone, amount) => {
+    if (!memberPhone) return { success: false, error: 'No phone number provided' };
+    
+    const message = smsService.formatMessage(SMS_TEMPLATES.CONTRIBUTION, { 
       amount: amount.toLocaleString() 
     });
     return await window.api.sendSMS(memberPhone, message);
