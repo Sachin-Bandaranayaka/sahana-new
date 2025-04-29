@@ -36,12 +36,15 @@ import {
 } from '@mui/icons-material';
 import api from '../../services/api';
 import smsService from '../../services/smsService';
+import otpService, { OTP_OPERATIONS } from '../../services/otpService';
+import OTPVerification from '../common/OTPVerification';
 
 const CashBook = () => {
   const [transactions, setTransactions] = useState([]);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
+  const [openOtpDialog, setOpenOtpDialog] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [currentTransaction, setCurrentTransaction] = useState(null);
   const [page, setPage] = useState(0);
@@ -60,6 +63,11 @@ const CashBook = () => {
     open: false,
     message: '',
     severity: 'success'
+  });
+  const [otpData, setOtpData] = useState({
+    memberPhone: '',
+    operation: '',
+    verifiedToken: ''
   });
 
   // Categories by transaction type
@@ -83,6 +91,20 @@ const CashBook = () => {
       'Bank Charges (බැංකු ගාස්තු)',
       'Other Expense (වෙනත් වියදම්)'
     ]
+  };
+
+  // Array of categories that require OTP verification for editing
+  const otpRequiredCategories = [
+    'Membership Fee (සාමාජික ගාස්තු)',
+    'Loan Interest (ණය පොලී)',
+    'Contribution (දායකත්වය)'
+  ];
+
+  // Map categories to OTP operation types
+  const categoryToOtpOperation = {
+    'Membership Fee (සාමාජික ගාස්තු)': OTP_OPERATIONS.MEMBER_FEE_EDIT,
+    'Loan Interest (ණය පොලී)': OTP_OPERATIONS.LOAN_INTEREST_EDIT,
+    'Contribution (දායකත්වය)': OTP_OPERATIONS.CONTRIBUTION_EDIT
   };
 
   useEffect(() => {
@@ -135,15 +157,71 @@ const CashBook = () => {
     
     if (mode === 'edit' && transaction) {
       setCurrentTransaction(transaction);
-      setFormData({
-        date: transaction.date,
-        type: transaction.type,
-        category: transaction.category,
-        amount: transaction.amount,
-        description: transaction.description,
-        memberId: transaction.memberId || ''
-      });
+      
+      // Check if this transaction requires OTP verification
+      if (
+        transaction.type === 'income' && 
+        otpRequiredCategories.includes(transaction.category) && 
+        transaction.memberId
+      ) {
+        // Get the member and initiate OTP verification
+        const initiateOtpVerification = async () => {
+          try {
+            // Get member details to find phone number
+            const member = await api.getMember(transaction.memberId);
+            if (!member || !member.phone) {
+              setSnackbar({
+                open: true,
+                message: 'Member has no phone number for OTP verification',
+                severity: 'error'
+              });
+              return;
+            }
+            
+            // Set OTP data
+            setOtpData({
+              memberPhone: member.phone,
+              operation: categoryToOtpOperation[transaction.category] || OTP_OPERATIONS.TRANSACTION_EDIT,
+              verifiedToken: ''
+            });
+            
+            // Pre-fill form data
+            setFormData({
+              date: transaction.date,
+              type: transaction.type,
+              category: transaction.category,
+              amount: transaction.amount,
+              description: transaction.description,
+              memberId: transaction.memberId || ''
+            });
+            
+            // Open OTP dialog
+            setOpenOtpDialog(true);
+          } catch (error) {
+            console.error("Error setting up OTP verification:", error);
+            setSnackbar({
+              open: true,
+              message: 'Error setting up verification',
+              severity: 'error'
+            });
+          }
+        };
+        
+        initiateOtpVerification();
+      } else {
+        // No OTP required, open dialog directly
+        setFormData({
+          date: transaction.date,
+          type: transaction.type,
+          category: transaction.category,
+          amount: transaction.amount,
+          description: transaction.description,
+          memberId: transaction.memberId || ''
+        });
+        setOpenDialog(true);
+      }
     } else {
+      // Adding a new transaction - no OTP needed
       setCurrentTransaction(null);
       setFormData({
         date: new Date().toISOString().split('T')[0],
@@ -153,9 +231,8 @@ const CashBook = () => {
         description: '',
         memberId: ''
       });
+      setOpenDialog(true);
     }
-    
-    setOpenDialog(true);
   };
 
   const handleCloseDialog = () => {
@@ -209,11 +286,37 @@ const CashBook = () => {
     return Object.keys(errors).length === 0;
   };
 
+  const handleOtpVerified = (otpToken) => {
+    setOtpData({
+      ...otpData,
+      verifiedToken: otpToken
+    });
+    setOpenOtpDialog(false);
+    setOpenDialog(true);
+  };
+
   const handleSubmit = async () => {
     if (!validateForm()) return;
     
     try {
       if (editMode && currentTransaction) {
+        // If this is an OTP-required transaction and editing, verify the OTP first
+        if (
+          currentTransaction.type === 'income' && 
+          otpRequiredCategories.includes(currentTransaction.category) && 
+          currentTransaction.memberId
+        ) {
+          // Verify OTP has been verified 
+          if (!otpData.verifiedToken || !otpService.isOperationVerified(otpData.verifiedToken)) {
+            setSnackbar({
+              open: true,
+              message: 'OTP verification required before editing this transaction',
+              severity: 'error'
+            });
+            return;
+          }
+        }
+        
         // Update existing transaction
         const updatedTransaction = {
           date: formData.date,
@@ -290,6 +393,13 @@ const CashBook = () => {
       // Refresh transactions after adding or updating
       fetchTransactions();
       handleCloseDialog();
+
+      // Reset OTP data 
+      setOtpData({
+        memberPhone: '',
+        operation: '',
+        verifiedToken: ''
+      });
     } catch (error) {
       console.error("Error saving transaction:", error);
       setSnackbar({
@@ -599,6 +709,16 @@ const CashBook = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Add OTP Verification Dialog */}
+      <OTPVerification
+        open={openOtpDialog}
+        onClose={() => setOpenOtpDialog(false)}
+        onVerify={handleOtpVerified}
+        phoneNumber={otpData.memberPhone}
+        operation={otpData.operation}
+        title="Transaction Edit Verification"
+      />
 
       {/* Snackbar for notifications */}
       <Snackbar

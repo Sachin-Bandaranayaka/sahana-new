@@ -14,7 +14,11 @@ const OTP_TEMPLATES = {
 export const OTP_OPERATIONS = {
   USER_EDIT: "user account update",
   LOAN_EDIT: "loan modification",
-  LOAN_PAYMENT: "loan payment"
+  LOAN_PAYMENT: "loan payment",
+  MEMBER_FEE_EDIT: "member fee edit",
+  LOAN_INTEREST_EDIT: "loan interest edit",
+  CONTRIBUTION_EDIT: "contribution edit",
+  TRANSACTION_EDIT: "transaction edit"
 };
 
 // In-memory OTP storage (will be lost on app restart - consider moving to database for production)
