@@ -5,6 +5,7 @@ const SMS_TEMPLATES = {
   MEMBER_REGISTRATION: "Welcome to our financial organization! Your member ID is: {{memberId}}.",
   LOAN_ISSUED: "Dear member, a loan of Rs. {{amount}} has been issued to you. Reference ID: {{loanId}}",
   LOAN_PAYMENT: "Thank you for your payment of Rs. {{amount}} towards loan ID {{loanId}}. Remaining balance: Rs. {{balance}}",
+  MEMBER_FEE: "Thank you for your member fee payment of Rs. {{amount}}. Your payment has been recorded successfully.",
 };
 
 // SMS sending function that will be exposed through preload.js
@@ -45,6 +46,16 @@ const smsService = {
       loanId, 
       amount: amount.toLocaleString(),
       balance: balance.toLocaleString()
+    });
+    return await window.api.sendSMS(memberPhone, message);
+  },
+  
+  // Send SMS for member fee payment
+  sendMemberFeeSMS: async (memberPhone, amount) => {
+    if (!memberPhone) return { success: false, error: 'No phone number provided' };
+    
+    const message = smsService.formatMessage(SMS_TEMPLATES.MEMBER_FEE, { 
+      amount: amount.toLocaleString() 
     });
     return await window.api.sendSMS(memberPhone, message);
   }

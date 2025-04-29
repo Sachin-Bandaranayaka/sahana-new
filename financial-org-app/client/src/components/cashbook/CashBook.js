@@ -35,6 +35,7 @@ import {
   ArrowDownward as ExpenseIcon
 } from '@mui/icons-material';
 import api from '../../services/api';
+import smsService from '../../services/smsService';
 
 const CashBook = () => {
   const [transactions, setTransactions] = useState([]);
@@ -242,6 +243,27 @@ const CashBook = () => {
         };
         
         await api.addCashEntry(newTransaction);
+        
+        // Send SMS notification for member fee payment
+        if (formData.type === 'income' && 
+            formData.category === 'Membership Fee (සාමාජික ගාස්තු)' && 
+            formData.memberId) {
+          try {
+            // Get member details to get the phone number
+            const member = await api.getMember(formData.memberId);
+            if (member && member.phone) {
+              // Send the SMS
+              const smsResult = await smsService.sendMemberFeeSMS(
+                member.phone,
+                parseFloat(formData.amount)
+              );
+              
+              console.log('Member fee payment SMS result:', smsResult);
+            }
+          } catch (smsError) {
+            console.error('Error sending member fee payment SMS:', smsError);
+          }
+        }
         
         setSnackbar({
           open: true,
