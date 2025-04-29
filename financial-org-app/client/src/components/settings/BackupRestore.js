@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Button,
@@ -47,6 +47,8 @@ const BackupRestore = () => {
     auto_backup_time: '00:00',
     auto_backup_path: ''
   });
+  const [nextBackup, setNextBackup] = useState(null);
+  const [loadingNextBackup, setLoadingNextBackup] = useState(false);
 
   React.useEffect(() => {
     // Load backup settings
@@ -67,6 +69,9 @@ const BackupRestore = () => {
         setBackupFrequency(backupSettings.auto_backup_frequency);
         setBackupTime(backupSettings.auto_backup_time);
         setBackupPath(backupSettings.auto_backup_path);
+        
+        // Load next scheduled backup info
+        await loadNextScheduledBackup();
       } catch (error) {
         console.error('Failed to load backup settings:', error);
         setSnackbar({
@@ -78,7 +83,28 @@ const BackupRestore = () => {
     };
     
     loadSettings();
+    
+    // Set up a timer to refresh the next scheduled backup info every minute
+    const timer = setInterval(() => {
+      loadNextScheduledBackup();
+    }, 60000); // 60,000 ms = 1 minute
+    
+    // Clean up the timer on component unmount
+    return () => clearInterval(timer);
   }, []);
+
+  // Function to load the next scheduled backup information
+  const loadNextScheduledBackup = async () => {
+    try {
+      setLoadingNextBackup(true);
+      const result = await api.getNextScheduledBackup();
+      setNextBackup(result);
+    } catch (error) {
+      console.error('Failed to get next scheduled backup:', error);
+    } finally {
+      setLoadingNextBackup(false);
+    }
+  };
 
   const handleBackup = async () => {
     try {
@@ -197,6 +223,9 @@ const BackupRestore = () => {
         message: 'Auto backup settings saved successfully',
         severity: 'success'
       });
+      
+      // After saving settings, refresh the next scheduled backup time
+      await loadNextScheduledBackup();
       
     } catch (error) {
       console.error('Failed to save auto backup settings:', error);
@@ -458,7 +487,7 @@ const BackupRestore = () => {
                     />
                   </Grid>
                   
-                  <Grid item xs={12} md={4}>
+                  <Grid item xs={12} sm={6} md={4}>
                     <Typography variant="body2" gutterBottom>
                       Backup location:
                     </Typography>
@@ -477,6 +506,32 @@ const BackupRestore = () => {
                       >
                         Browse
                       </Button>
+                    </Box>
+                  </Grid>
+                  
+                  {/* Next Scheduled Backup Display */}
+                  <Grid item xs={12}>
+                    <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Next Scheduled Backup:
+                      </Typography>
+                      
+                      {loadingNextBackup ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <CircularProgress size={16} sx={{ mr: 1 }} />
+                          <Typography variant="body2">Loading schedule information...</Typography>
+                        </Box>
+                      ) : (
+                        nextBackup && nextBackup.scheduled ? (
+                          <Typography variant="body2">
+                            {nextBackup.formattedDate}
+                          </Typography>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">
+                            No backup currently scheduled. Save settings to schedule your next automatic backup.
+                          </Typography>
+                        )
+                      )}
                     </Box>
                   </Grid>
                 </>

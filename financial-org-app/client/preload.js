@@ -63,6 +63,7 @@ contextBridge.exposeInMainWorld(
     // Settings
     getSettings: () => ipcRenderer.invoke('get-settings'),
     updateSettings: (settings) => ipcRenderer.invoke('update-settings', settings),
+    updateSetting: (setting) => ipcRenderer.invoke('update-setting', setting),
     
     // Dashboard
     getDashboardData: () => {
@@ -71,8 +72,9 @@ contextBridge.exposeInMainWorld(
     },
     
     // Backup & Restore
-    backupData: (path) => ipcRenderer.invoke('backup-database', path),
-    restoreData: (path) => ipcRenderer.invoke('restore-database', path),
+    backupData: (path) => ipcRenderer.invoke('backup-data', path),
+    restoreData: (path) => ipcRenderer.invoke('restore-data', path),
+    getNextScheduledBackup: () => ipcRenderer.invoke('get-next-scheduled-backup'),
     
     // Reports
     generateReport: (reportType, params) => ipcRenderer.invoke('generate-report', reportType, params),

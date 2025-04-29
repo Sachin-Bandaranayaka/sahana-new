@@ -9,274 +9,265 @@ const https = require('https');
 let mainWindow;
 let db;
 
-// Database setup
-async function setupDatabase() {
-  db = await open({
-    filename: path.join(app.getPath('userData'), 'organization.db'),
-    driver: sqlite3.Database
-  });
-  
-  // Create tables if they don't exist
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS members (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      member_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      address TEXT,
-      contact TEXT,
-      joined_date TEXT
-    );
-    
-    CREATE TABLE IF NOT EXISTS cash_book (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      member_id INTEGER,
-      date TEXT,
-      description TEXT,
-      amount REAL,
-      FOREIGN KEY (member_id) REFERENCES members(id)
-    );
-    
-    CREATE TABLE IF NOT EXISTS loan_book (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      member_id INTEGER,
-      date TEXT,
-      loan_type TEXT,
-      amount_taken REAL,
-      amount_paid REAL,
-      loan_premium REAL,
-      loan_interest REAL,
-      total REAL,
-      is_active INTEGER DEFAULT 1,
-      interest_rate REAL,
-      last_interest_paid_date TEXT,
-      FOREIGN KEY (member_id) REFERENCES members(id)
-    );
-    
-    CREATE TABLE IF NOT EXISTS loan_types (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      interest_rate REAL NOT NULL,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-    
-    CREATE TABLE IF NOT EXISTS dividend_book (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      member_id INTEGER,
-      date TEXT,
-      description TEXT,
-      share_amount REAL,
-      annual_interest REAL,
-      attending_bonus REAL,
-      deductibles REAL,
-      total REAL,
-      quarter INTEGER,
-      year INTEGER,
-      FOREIGN KEY (member_id) REFERENCES members(id)
-    );
-    
-    CREATE TABLE IF NOT EXISTS organization_accounts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      account_name TEXT,
-      bank_name TEXT,
-      account_type TEXT,
-      balance REAL,
-      interest_rate REAL,
-      start_date TEXT,
-      maturity_date TEXT
-    );
-    
-    CREATE TABLE IF NOT EXISTS transactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      date TEXT,
-      description TEXT,
-      amount REAL,
-      transaction_type TEXT,
-      account_id INTEGER,
-      FOREIGN KEY (account_id) REFERENCES organization_accounts(id)
-    );
-    
-    CREATE TABLE IF NOT EXISTS settings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT UNIQUE,
-      value TEXT
-    );
-    
-    CREATE TABLE IF NOT EXISTS meetings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      date TEXT,
-      description TEXT,
-      attendees TEXT
-    );
-    
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE NOT NULL,
-      password TEXT NOT NULL,
-      role TEXT DEFAULT 'user',
-      created_at TEXT,
-      last_login TEXT
-    );
-    
-    CREATE TABLE IF NOT EXISTS sms_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      phone_number TEXT NOT NULL,
-      message TEXT NOT NULL,
-      status TEXT,
-      sent_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      response_data TEXT
-    );
-  `);
-  
-  // Check if settings table has the right structure
+// Backup scheduler variables
+let backupScheduler = null;
+let nextScheduledBackup = null;
+
+// Function to get a specific setting from the database
+async function getSetting(name, defaultValue = '') {
   try {
-    // Drop and recreate the settings table completely
-    console.log('Recreating settings table with correct structure...');
-    
-    // First, get the current settings if they exist
-    let existingSettings = [];
-    try {
-      // Query all columns from the settings table to make sure we can migrate any data
-      const columns = await db.all("PRAGMA table_info(settings)");
-      if (columns.length > 0) {
-        const allColumns = columns.map(col => col.name).join(', ');
-        existingSettings = await db.all(`SELECT ${allColumns} FROM settings`);
-        console.log(`Found ${existingSettings.length} existing settings to migrate`);
-      }
-    } catch (error) {
-      console.log('Could not retrieve existing settings:', error.message);
-    }
-    
-    // Now drop and recreate the table
-    await db.exec(`
-      DROP TABLE IF EXISTS settings;
-      CREATE TABLE settings (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE,
-        value TEXT
-      );
-    `);
-    
-    console.log('Settings table recreated successfully');
-    
-    // Migrate old data if available
-    if (existingSettings.length > 0) {
-      console.log('Migrating old settings data...');
-      for (const setting of existingSettings) {
-        // Try to find the name and any value to migrate
-        const name = setting.name;
-        let value = null;
-        
-        // Look for a value in any column other than id or name
-        for (const key in setting) {
-          if (key !== 'id' && key !== 'name' && setting[key] !== null) {
-            value = setting[key];
-            break;
-          }
-        }
-        
-        if (name && value !== null) {
-          await db.run('INSERT INTO settings (name, value) VALUES (?, ?)', [name, value]);
-        }
-      }
-      console.log('Settings data migration completed');
-    }
+    const setting = await db.get('SELECT value FROM settings WHERE name = ?', name);
+    return setting ? setting.value : defaultValue;
   } catch (error) {
-    console.error('Error recreating settings table:', error);
-  }
-  
-  // Now insert default settings
-  const settings = [
-    ['member_loan_interest_rate', '9'],
-    ['special_loan_interest_rate', '12'],
-    ['business_loan_interest_rate', '12'],
-    ['quarter_start_month_1', '1'],
-    ['quarter_end_month_1', '3'],
-    ['quarter_start_month_2', '4'],
-    ['quarter_end_month_2', '6'],
-    ['quarter_start_month_3', '7'],
-    ['quarter_end_month_3', '9'],
-    ['quarter_start_month_4', '10'],
-    ['quarter_end_month_4', '12'],
-    ['sms_api_key', ''],
-    ['sms_user_id', ''],
-    ['sms_enabled', 'false'], 
-    ['sms_sender_id', 'FINANCIALORG']
-  ];
-  
-  for (const [name, value] of settings) {
-    await db.run('INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)', [name, value]);
-  }
-  
-  // Insert default admin user if not present
-  const adminUser = await db.get('SELECT * FROM users WHERE username = ?', 'admin');
-  if (!adminUser) {
-    await db.run(
-      'INSERT INTO users (username, password, role, created_at) VALUES (?, ?, ?, ?)',
-      'admin', 'admin123', 'admin', new Date().toISOString()
-    );
+    console.error(`Error getting setting ${name}:`, error);
+    return defaultValue;
   }
 }
 
-function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      enableRemoteModule: false,
-      preload: path.join(__dirname, 'preload.js'),
-      webSecurity: true
-    },
-  });
+// Function to load auto backup settings
+async function loadAutoBackupSettings() {
+  try {
+    const autoBackupEnabled = await getSetting('auto_backup_enabled', 'false');
+    const autoBackupFrequency = await getSetting('auto_backup_frequency', 'weekly');
+    const autoBackupTime = await getSetting('auto_backup_time', '00:00');
+    const autoBackupPath = await getSetting('auto_backup_path', '');
+    
+    return {
+      enabled: autoBackupEnabled === 'true',
+      frequency: autoBackupFrequency,
+      time: autoBackupTime,
+      path: autoBackupPath,
+      lastBackup: await getSetting('last_auto_backup', '')
+    };
+  } catch (error) {
+    console.error('Error loading auto backup settings:', error);
+    return {
+      enabled: false,
+      frequency: 'weekly',
+      time: '00:00',
+      path: '',
+      lastBackup: ''
+    };
+  }
+}
 
-  // Set Content Security Policy
-  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': [
-          "default-src 'self' 'unsafe-inline' 'unsafe-eval' data:; " +
-          "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
-          "style-src 'self' 'unsafe-inline'; " +
-          "img-src 'self' data: https:;"
-        ]
-      }
-    });
-  });
-
-  // Disable Autofill features that cause DevTools errors
-  mainWindow.webContents.session.webRequest.onBeforeRequest(
-    { urls: ['*://*/*'] },
-    (details, callback) => {
-      callback({ cancel: false });
+// Function to calculate the next backup time based on settings
+function calculateNextBackupTime(settings) {
+  if (!settings.enabled || !settings.path) {
+    console.log('Auto backup disabled or path not set');
+    return null;
+  }
+  
+  const now = new Date();
+  const [hours, minutes] = settings.time.split(':').map(Number);
+  
+  // Create a date object for today at the specified time
+  const scheduledTime = new Date(now);
+  scheduledTime.setHours(hours, minutes, 0, 0);
+  
+  // If the time has already passed today, we need to schedule for the future
+  if (scheduledTime <= now) {
+    // For daily backups, schedule for tomorrow
+    if (settings.frequency === 'daily') {
+      scheduledTime.setDate(scheduledTime.getDate() + 1);
     }
-  );
-
-  mainWindow.loadURL(
-    isDev
-      ? 'http://localhost:3000'
-      : `file://${path.join(__dirname, 'client/build/index.html')}`
-  );
-
-  if (isDev) {
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
+    // For weekly backups, schedule for next week
+    else if (settings.frequency === 'weekly') {
+      scheduledTime.setDate(scheduledTime.getDate() + 7);
+    }
+    // For monthly backups, schedule for next month
+    else if (settings.frequency === 'monthly') {
+      scheduledTime.setMonth(scheduledTime.getMonth() + 1);
+    }
+  } else {
+    // If time hasn't passed today, but we're on a weekly/monthly schedule,
+    // check if we need to schedule it further in the future
+    
+    // For weekly backups, if the last backup was less than a week ago, schedule for next week
+    if (settings.frequency === 'weekly' && settings.lastBackup) {
+      const lastBackup = new Date(settings.lastBackup);
+      const daysSinceLastBackup = Math.floor((now - lastBackup) / (1000 * 60 * 60 * 24));
+      
+      if (daysSinceLastBackup < 7) {
+        // Find the next backup date (lastBackup + 7 days)
+        const nextBackupDate = new Date(lastBackup);
+        nextBackupDate.setDate(nextBackupDate.getDate() + 7);
+        // Set the correct time
+        nextBackupDate.setHours(hours, minutes, 0, 0);
+        
+        // If this date is in the future, use it
+        if (nextBackupDate > now) {
+          return nextBackupDate;
+        }
+      }
+    }
+    
+    // For monthly backups, if the last backup was less than a month ago, schedule for next month
+    if (settings.frequency === 'monthly' && settings.lastBackup) {
+      const lastBackup = new Date(settings.lastBackup);
+      const daysSinceLastBackup = Math.floor((now - lastBackup) / (1000 * 60 * 60 * 24));
+      
+      if (daysSinceLastBackup < 28) {
+        // Find the next backup date (lastBackup + 1 month)
+        const nextBackupDate = new Date(lastBackup);
+        nextBackupDate.setMonth(nextBackupDate.getMonth() + 1);
+        // Set the correct time
+        nextBackupDate.setHours(hours, minutes, 0, 0);
+        
+        // If this date is in the future, use it
+        if (nextBackupDate > now) {
+          return nextBackupDate;
+        }
+      }
+    }
   }
-
-  mainWindow.on('closed', () => (mainWindow = null));
+  
+  return scheduledTime;
 }
 
+// Function to perform the automatic backup
+async function performAutomaticBackup() {
+  try {
+    console.log('Starting automatic backup process...');
+    
+    // Load settings
+    const settings = await loadAutoBackupSettings();
+    
+    if (!settings.enabled || !settings.path) {
+      console.log('Auto backup is disabled or path not set. Skipping automatic backup.');
+      return { success: false, message: 'Auto backup is disabled or path not set' };
+    }
+    
+    const fs = require('fs');
+    const path = require('path');
+    
+    // Create the backup path if it doesn't exist
+    let filePath = settings.path;
+    try {
+      // Check if the path is a directory
+      const stats = fs.statSync(filePath);
+      if (stats.isDirectory()) {
+        // If it's a directory, append a filename with date
+        const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
+        filePath = path.join(filePath, `sahana_backup_${date}.json`);
+      }
+    } catch (err) {
+      // Path doesn't exist, which is fine for a new file
+      // Just make sure the directory exists
+      const dirPath = path.dirname(filePath);
+      if (!fs.existsSync(dirPath)) {
+        try {
+          fs.mkdirSync(dirPath, { recursive: true });
+        } catch (mkdirErr) {
+          console.error('Error creating directory:', mkdirErr);
+          return { success: false, error: `Unable to create directory: ${dirPath}` };
+        }
+      }
+    }
+    
+    // Get all data from tables
+    const members = await db.all('SELECT * FROM members');
+    const cashBook = await db.all('SELECT * FROM cash_book');
+    const loanBook = await db.all('SELECT * FROM loan_book');
+    const dividendBook = await db.all('SELECT * FROM dividend_book');
+    const accounts = await db.all('SELECT * FROM organization_accounts');
+    const transactions = await db.all('SELECT * FROM transactions');
+    const settingsData = await db.all('SELECT * FROM settings');
+    const meetings = await db.all('SELECT * FROM meetings');
+    
+    const data = {
+      members,
+      cashBook,
+      loanBook,
+      dividendBook,
+      accounts,
+      transactions,
+      settings: settingsData,
+      meetings,
+      backupDate: new Date().toISOString()
+    };
+    
+    // Write to file
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    
+    // Update last backup time in settings
+    await db.run('INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)', 
+                ['last_auto_backup', new Date().toISOString()]);
+    
+    // Log success
+    console.log(`Automatic backup completed successfully at ${filePath}`);
+    
+    // Schedule next backup
+    scheduleNextBackup();
+    
+    return { success: true, message: 'Automatic backup created successfully', path: filePath };
+  } catch (error) {
+    console.error('Automatic backup error:', error);
+    return { success: false, message: error.message };
+  }
+}
+
+// Function to schedule the next backup
+async function scheduleNextBackup() {
+  try {
+    // Clear existing scheduler if any
+    if (backupScheduler) {
+      clearTimeout(backupScheduler);
+      backupScheduler = null;
+    }
+    
+    // Load settings
+    const settings = await loadAutoBackupSettings();
+    
+    if (!settings.enabled || !settings.path) {
+      console.log('Auto backup is disabled or path not set. No backup scheduled.');
+      nextScheduledBackup = null;
+      return;
+    }
+    
+    // Calculate next backup time
+    const nextBackupTime = calculateNextBackupTime(settings);
+    
+    if (!nextBackupTime) {
+      console.log('Could not determine next backup time. No backup scheduled.');
+      nextScheduledBackup = null;
+      return;
+    }
+    
+    // Calculate milliseconds until next backup
+    const now = new Date();
+    const delay = nextBackupTime - now;
+    
+    // Log next backup time
+    console.log(`Next automatic backup scheduled for: ${nextBackupTime.toLocaleString()}`);
+    
+    // Schedule the backup
+    backupScheduler = setTimeout(performAutomaticBackup, delay);
+    nextScheduledBackup = nextBackupTime;
+  } catch (error) {
+    console.error('Error scheduling next backup:', error);
+  }
+}
+
+// Initialize auto backup when app is ready
 app.on('ready', async () => {
   // Disable Chrome DevTools Autofill errors
-  app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication');
+  app.commandLine.appendSwitch('disable-features', 'BlockThirdPartyCookies,SpareRendererForSitePerProcess');
   
-  // Log the paths for debugging
-  console.log('Main JS directory:', __dirname);
-  console.log('Preload path from main:', path.join(__dirname, 'preload.js'));
-  console.log('Preload path from client:', path.join(__dirname, 'client/preload.js'));
-  
-  await setupDatabase();
-  createWindow();
+  try {
+    await setupDatabase();
+    createWindow();
+    
+    // Initialize automatic backup scheduler
+    try {
+      await scheduleNextBackup();
+    } catch (error) {
+      console.error('Error initializing backup scheduler:', error);
+    }
+  } catch (error) {
+    console.error('Error during app startup:', error);
+    app.quit();
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -546,8 +537,24 @@ ipcMain.handle('get-settings', async () => {
 });
 
 ipcMain.handle('update-setting', async (event, setting) => {
-  await db.run('UPDATE settings SET value = ? WHERE name = ?', setting.value, setting.name);
-  return { success: true };
+  try {
+    // First, ensure the settings table exists with the correct schema
+    await db.run(`
+      CREATE TABLE IF NOT EXISTS settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE,
+        value TEXT
+      )
+    `);
+    
+    // Try INSERT OR REPLACE instead of UPDATE to handle both new and existing settings
+    await db.run('INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)', 
+                [setting.name, setting.value]);
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating setting:', error);
+    return { success: false, error: error.message };
+  }
 });
 
 // MEMBER ASSET CALCULATION
@@ -1785,4 +1792,22 @@ async function getSMSSetting(name) {
     console.error(`Error getting SMS setting ${name}:`, error);
     return null;
   }
-} 
+}
+
+// Add endpoint to get next scheduled backup time
+ipcMain.handle('get-next-scheduled-backup', async () => {
+  try {
+    if (!nextScheduledBackup) {
+      return { scheduled: false };
+    }
+    
+    return { 
+      scheduled: true,
+      timestamp: nextScheduledBackup.toISOString(),
+      formattedDate: nextScheduledBackup.toLocaleString() 
+    };
+  } catch (error) {
+    console.error('Error getting next scheduled backup time:', error);
+    return { scheduled: false, error: error.message };
+  }
+}); 

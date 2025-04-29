@@ -43,6 +43,7 @@ import {
 import api from '../../services/api';
 import ChangePassword from './ChangePassword';
 import SMSSettings from './SMSSettings';
+import BackupRestore from './BackupRestore';
 
 const Settings = () => {
   const [tabValue, setTabValue] = useState(0);
@@ -655,84 +656,7 @@ const Settings = () => {
       )}
       
       {/* Backup & Restore Tab Panel */}
-      {tabValue === 2 && (
-        <Grid container spacing={4}>
-          <Grid item xs={12} md={6}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  <BackupIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
-                  Backup Data
-                </Typography>
-                <Typography variant="body2" paragraph color="text.secondary">
-                  Create a backup of all your organization data. 
-                  This includes members, transactions, loans, and settings.
-                </Typography>
-                
-                <TextField
-                  fullWidth
-                  label="Backup File Path"
-                  value={backupPath}
-                  onChange={(e) => setBackupPath(e.target.value)}
-                  margin="normal"
-                  helperText="Enter a folder path to create a date-stamped backup file, or a complete path ending with .json"
-                  disabled={isProcessing}
-                  placeholder="C:/Users/YourName/Documents/Backups"
-                />
-              </CardContent>
-              <CardActions>
-                <Button
-                  fullWidth
-                  variant="contained"
-                  color="primary"
-                  startIcon={isProcessing ? <CircularProgress size={24} /> : <BackupIcon />}
-                  onClick={handleBackup}
-                  disabled={isProcessing}
-                >
-                  {isProcessing ? 'Processing...' : 'Create Backup'}
-                </Button>
-              </CardActions>
-            </Card>
-          </Grid>
-          
-          <Grid item xs={12} md={6}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  <RestoreIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
-                  Restore Data
-                </Typography>
-                <Typography variant="body2" paragraph color="text.secondary">
-                  Restore your organization data from a previous backup.
-                  This will replace all current data with the backup data.
-                </Typography>
-                
-                <TextField
-                  fullWidth
-                  label="Backup File Path"
-                  value={restorePath}
-                  onChange={(e) => setRestorePath(e.target.value)}
-                  margin="normal"
-                  helperText="Enter the full path to the backup file"
-                  disabled={isProcessing}
-                />
-              </CardContent>
-              <CardActions>
-                <Button
-                  fullWidth
-                  variant="contained"
-                  color="secondary"
-                  startIcon={isProcessing ? <CircularProgress size={24} /> : <RestoreIcon />}
-                  onClick={handleRestore}
-                  disabled={isProcessing}
-                >
-                  {isProcessing ? 'Processing...' : 'Restore From Backup'}
-                </Button>
-              </CardActions>
-            </Card>
-          </Grid>
-        </Grid>
-      )}
+      {tabValue === 2 && <BackupRestore />}
       
       {/* Security Tab Panel */}
       {tabValue === 3 && (

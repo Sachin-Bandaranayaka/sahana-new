@@ -160,55 +160,229 @@ function createTables() {
       });
     });
 
-    // Check if settings exist, if not insert default settings
-    db.get('SELECT COUNT(*) as count FROM settings', (err, row) => {
+    // Check settings table structure
+    db.all("PRAGMA table_info(settings)", (err, cols) => {
       if (err) {
-        console.error('Error checking settings:', err);
+        console.error('Error checking settings table schema:', err);
         return;
       }
       
-      if (row.count === 0) {
-        const defaultSettings = {
-          orgName: 'Sahana Welfare',
-          orgAddress: 'Colombo, Sri Lanka',
-          orgPhone: '0112345678',
-          orgEmail: 'info@sahanawelfare.lk',
-          registrationNumber: 'REG12345',
-          foundedYear: 2022,
-          taxId: 'TAX98765',
-          quarterEndMonths: '3,6,9,12',
-          defaultLoanInterest: 10,
-          membershipFee: 1000,
-          shareValue: 1000
-        };
+      // Check if value column exists
+      if (cols.length > 0) {
+        const hasValueColumn = cols.some(col => col.name === 'value');
         
-        db.run(`INSERT INTO settings (
-          id, orgName, orgAddress, orgPhone, orgEmail, registrationNumber, 
-          foundedYear, taxId, quarterEndMonths, defaultLoanInterest, 
-          membershipFee, shareValue
-        ) VALUES (
-          1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        )`, [
-          defaultSettings.orgName, 
-          defaultSettings.orgAddress,
-          defaultSettings.orgPhone,
-          defaultSettings.orgEmail,
-          defaultSettings.registrationNumber,
-          defaultSettings.foundedYear,
-          defaultSettings.taxId,
-          defaultSettings.quarterEndMonths,
-          defaultSettings.defaultLoanInterest,
-          defaultSettings.membershipFee,
-          defaultSettings.shareValue
-        ], function(err) {
-          if (err) {
-            console.error('Error inserting default settings:', err);
-          } else {
-            console.log('Default settings created');
-          }
-        });
+        if (!hasValueColumn) {
+          console.log('Settings table exists but missing value column. Fixing...');
+          
+          // Begin transaction to fix the table
+          db.run('BEGIN TRANSACTION', (err) => {
+            if (err) {
+              console.error('Error starting transaction:', err);
+              return;
+            }
+            
+            // Create a new table with correct structure
+            db.run(`
+              CREATE TABLE settings_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE,
+                value TEXT
+              )
+            `, (err) => {
+              if (err) {
+                console.error('Error creating new settings table:', err);
+                db.run('ROLLBACK');
+                return;
+              }
+              
+              // Extract settings from old table
+              db.all('SELECT * FROM settings', (err, rows) => {
+                if (err) {
+                  console.error('Error getting old settings:', err);
+                  db.run('ROLLBACK');
+                  return;
+                }
+                
+                // Migration complete handler
+                const finalizeMigration = () => {
+                  // Drop old table and rename new one
+                  db.run('DROP TABLE settings', (err) => {
+                    if (err) {
+                      console.error('Error dropping old table:', err);
+                      db.run('ROLLBACK');
+                      return;
+                    }
+                    
+                    db.run('ALTER TABLE settings_new RENAME TO settings', (err) => {
+                      if (err) {
+                        console.error('Error renaming table:', err);
+                        db.run('ROLLBACK');
+                        return;
+                      }
+                      
+                      db.run('COMMIT', (err) => {
+                        if (err) {
+                          console.error('Error committing transaction:', err);
+                          db.run('ROLLBACK');
+                        } else {
+                          console.log('Settings table fixed successfully');
+                          // After fixing, ensure we have default settings
+                          checkDefaultSettings();
+                        }
+                      });
+                    });
+                  });
+                };
+                
+                if (rows.length === 0) {
+                  finalizeMigration();
+                  return;
+                }
+                
+                // Try to migrate data
+                let migrated = 0;
+                let expected = 0;
+                
+                // Count settings with extractable data
+                for (const row of rows) {
+                  // If it has a name field, we'll try to migrate it
+                  if (row.name) expected++;
+                }
+                
+                if (expected === 0) {
+                  finalizeMigration();
+                  return;
+                }
+                
+                for (const row of rows) {
+                  const name = row.name;
+                  if (!name) continue;
+                  
+                  // Try to find a value from another column
+                  let value = null;
+                  for (const key in row) {
+                    if (key !== 'id' && key !== 'name' && row[key]) {
+                      value = String(row[key]);
+                      break;
+                    }
+                  }
+                  
+                  if (value === null) {
+                    migrated++;
+                    if (migrated === expected) finalizeMigration();
+                    continue;
+                  }
+                  
+                  db.run('INSERT INTO settings_new (name, value) VALUES (?, ?)', [name, value], (err) => {
+                    migrated++;
+                    if (err) {
+                      console.error(`Error migrating setting ${name}:`, err);
+                    }
+                    
+                    if (migrated === expected) {
+                      finalizeMigration();
+                    }
+                  });
+                }
+              });
+            });
+          });
+        } else {
+          // Settings table exists and has value column, just check defaults
+          checkDefaultSettings();
+        }
+      } else {
+        // Table doesn't exist or is empty, just check defaults
+        checkDefaultSettings();
       }
     });
+    
+    function checkDefaultSettings() {
+      // Check if settings exist, if not insert default settings
+      db.get('SELECT COUNT(*) as count FROM settings', (err, row) => {
+        if (err) {
+          console.error('Error checking settings:', err);
+          return;
+        }
+        
+        if (row.count === 0) {
+          const defaultSettings = {
+            orgName: 'Sahana Welfare',
+            orgAddress: 'Colombo, Sri Lanka',
+            orgPhone: '0112345678',
+            orgEmail: 'info@sahanawelfare.lk',
+            registrationNumber: 'REG12345',
+            foundedYear: 2022,
+            taxId: 'TAX98765',
+            quarterEndMonths: '3,6,9,12',
+            defaultLoanInterest: 10,
+            membershipFee: 1000,
+            shareValue: 1000
+          };
+          
+          // Insert default settings as name/value pairs
+          const settingsInserts = [
+            ['auto_backup_enabled', 'false'],
+            ['auto_backup_frequency', 'weekly'],
+            ['auto_backup_time', '00:00'],
+            ['auto_backup_path', ''],
+            ['orgName', defaultSettings.orgName],
+            ['orgAddress', defaultSettings.orgAddress],
+            ['orgPhone', defaultSettings.orgPhone],
+            ['orgEmail', defaultSettings.orgEmail],
+            ['registrationNumber', defaultSettings.registrationNumber],
+            ['foundedYear', defaultSettings.foundedYear.toString()],
+            ['taxId', defaultSettings.taxId],
+            ['quarterEndMonths', defaultSettings.quarterEndMonths],
+            ['defaultLoanInterest', defaultSettings.defaultLoanInterest.toString()],
+            ['membershipFee', defaultSettings.membershipFee.toString()],
+            ['shareValue', defaultSettings.shareValue.toString()]
+          ];
+          
+          const insertStatement = db.prepare('INSERT OR IGNORE INTO settings (name, value) VALUES (?, ?)');
+          
+          for (const [name, value] of settingsInserts) {
+            insertStatement.run(name, value, (err) => {
+              if (err) {
+                console.error(`Error inserting default setting ${name}:`, err);
+              }
+            });
+          }
+          
+          insertStatement.finalize((err) => {
+            if (err) {
+              console.error('Error finalizing settings insertion:', err);
+            } else {
+              console.log('Default settings created');
+            }
+          });
+        } else {
+          // Ensure auto backup settings exist
+          const autoBackupSettings = [
+            ['auto_backup_enabled', 'false'],
+            ['auto_backup_frequency', 'weekly'],
+            ['auto_backup_time', '00:00'],
+            ['auto_backup_path', '']
+          ];
+          
+          const insertStatement = db.prepare('INSERT OR IGNORE INTO settings (name, value) VALUES (?, ?)');
+          
+          for (const [name, value] of autoBackupSettings) {
+            insertStatement.run(name, value, (err) => {
+              if (err) {
+                console.error(`Error inserting auto backup setting ${name}:`, err);
+              }
+            });
+          }
+          
+          insertStatement.finalize((err) => {
+            if (err) {
+              console.error('Error finalizing auto backup settings insertion:', err);
+            }
+          });
+        }
+      });
+    }
 
     // Check if default admin user exists, if not create it
     db.get('SELECT COUNT(*) as count FROM users', (err, row) => {
@@ -1195,39 +1369,55 @@ ipcMain.handle('get-settings', async () => {
 
 ipcMain.handle('update-setting', async (event, setting) => {
   return new Promise((resolve, reject) => {
-    db.run(
-      'UPDATE settings SET value = ? WHERE name = ?',
-      [setting.value, setting.name],
-      function(err) {
-        if (err) {
-          console.error('Error updating setting:', err);
-          reject(err);
-        } else {
-          if (this.changes === 0) {
-            // If setting doesn't exist, insert it
-            db.run(
-              'INSERT INTO settings (name, value) VALUES (?, ?)',
-              [setting.name, setting.value],
-              function(err) {
-                if (err) {
-                  console.error('Error inserting setting:', err);
-                  reject(err);
-                } else {
-                  resolve({ success: true, id: this.lastID, ...setting });
-                }
-              }
-            );
+    // First, ensure the settings table exists with the correct schema
+    db.run(`
+      CREATE TABLE IF NOT EXISTS settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE,
+        value TEXT
+      )
+    `, function(tableErr) {
+      if (tableErr) {
+        console.error('Error creating settings table:', tableErr);
+        reject(tableErr);
+        return;
+      }
+      
+      // Try to update first
+      db.run(
+        'UPDATE settings SET value = ? WHERE name = ?',
+        [setting.value, setting.name],
+        function(err) {
+          if (err) {
+            console.error('Error updating setting:', err);
+            reject(err);
           } else {
-            resolve({ success: true, ...setting });
+            if (this.changes === 0) {
+              // If setting doesn't exist, insert it
+              db.run(
+                'INSERT INTO settings (name, value) VALUES (?, ?)',
+                [setting.name, setting.value],
+                function(err) {
+                  if (err) {
+                    console.error('Error inserting setting:', err);
+                    reject(err);
+                  } else {
+                    resolve({ success: true, id: this.lastID, ...setting });
+                  }
+                }
+              );
+            } else {
+              resolve({ success: true, ...setting });
+            }
           }
         }
-      }
-    );
+      );
+    });
   });
 });
 
 // BACKUP & RESTORE API
-ipcMain.handle('backup-database', async (event, filePath) => {
+ipcMain.handle('backup-data', async (event, filePath) => {
   return new Promise((resolve, reject) => {
     try {
       const fs = require('fs');
@@ -1338,7 +1528,7 @@ ipcMain.handle('backup-database', async (event, filePath) => {
   });
 });
 
-ipcMain.handle('restore-database', async (event, filePath) => {
+ipcMain.handle('restore-data', async (event, filePath) => {
   return new Promise((resolve, reject) => {
     try {
       const fs = require('fs');
@@ -2431,4 +2621,14 @@ ipcMain.handle('get-loan-types', async () => {
       }
     });
   });
+});
+
+// Add handler for next scheduled backup - note this is a placeholder since
+// the client doesn't actually have a scheduler implementation
+ipcMain.handle('get-next-scheduled-backup', async () => {
+  // Return a placeholder response since this is actually implemented in main.js
+  return { 
+    scheduled: false,
+    message: 'Automatic scheduling not available in this environment'
+  };
 });

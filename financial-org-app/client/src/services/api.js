@@ -351,7 +351,17 @@ const api = {
       throw new Error('This application requires Electron to access the database');
     }
     
-    return await window.api.updateSetting(setting);
+    try {
+      const result = await window.api.updateSetting(setting);
+      if (!result.success) {
+        console.error('Error updating setting:', result.error);
+        throw new Error(result.error || 'Error updating setting');
+      }
+      return result;
+    } catch (error) {
+      console.error('Error updating setting:', error);
+      throw error;
+    }
   },
   
   // Backup and Restore
@@ -369,6 +379,14 @@ const api = {
     }
     
     return await window.api.restoreData(filePath);
+  },
+  
+  getNextScheduledBackup: async () => {
+    if (!isElectron) {
+      throw new Error('This application requires Electron to access the database');
+    }
+    
+    return await window.api.getNextScheduledBackup();
   },
   
   // Helper function to format currency in LKR
