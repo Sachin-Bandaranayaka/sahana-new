@@ -2623,6 +2623,44 @@ ipcMain.handle('get-loan-types', async () => {
   });
 });
 
+// Add handler for add-loan-type
+ipcMain.handle('add-loan-type', async (event, loanType) => {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'INSERT INTO loan_types (name, interest_rate) VALUES (?, ?)',
+      [loanType.name, loanType.interestRate],
+      function(err) {
+        if (err) {
+          console.error('Error adding loan type:', err);
+          reject(err);
+        } else {
+          // Return the new loan type with the inserted ID
+          resolve({ 
+            id: this.lastID, 
+            name: loanType.name, 
+            interest_rate: loanType.interestRate 
+          });
+        }
+      }
+    );
+  });
+});
+
+// Add handler for delete-loan-type
+ipcMain.handle('delete-loan-type', async (event, id) => {
+  return new Promise((resolve, reject) => {
+    // Delete the loan type directly
+    db.run('DELETE FROM loan_types WHERE id = ?', [id], (err) => {
+      if (err) {
+        console.error('Error deleting loan type:', err);
+        reject(err);
+      } else {
+        resolve({ success: true });
+      }
+    });
+  });
+});
+
 // Add handler for next scheduled backup - note this is a placeholder since
 // the client doesn't actually have a scheduler implementation
 ipcMain.handle('get-next-scheduled-backup', async () => {

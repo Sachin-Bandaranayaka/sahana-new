@@ -434,7 +434,7 @@ const Settings = () => {
                     loanTypes.map((loanType) => (
                       <TableRow key={loanType.id}>
                         <TableCell>{loanType.name}</TableCell>
-                        <TableCell>{loanType.interestRate}%</TableCell>
+                        <TableCell>{loanType.interest_rate}%</TableCell>
                         {editMode && (
                           <TableCell align="right">
                             <IconButton 
