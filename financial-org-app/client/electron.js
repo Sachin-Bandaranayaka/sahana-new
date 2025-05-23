@@ -693,7 +693,7 @@ ipcMain.handle('get-member-transactions', async (event, memberId) => {
     const promises = [
       // Cashbook entries
       new Promise((resolve, reject) => {
-        db.all('SELECT id, date, description, amount, CASE WHEN category = "Member Fee" THEN "member_fee" ELSE "cash" END as type FROM cashbook WHERE memberId = ?', 
+        db.all('SELECT id, date, description, amount, CASE WHEN category = "Membership Fee (සාමාජික ගාස්තු)" THEN "member_fee" ELSE "cash" END as type FROM cashbook WHERE memberId = ?', 
           [memberId], (err, rows) => {
             if (err) reject(err);
             else resolve(rows || []);
