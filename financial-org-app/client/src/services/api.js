@@ -167,7 +167,14 @@ const api = {
       throw new Error('This application requires Electron to access the database');
     }
     
-    return await window.api.addLoanPayment(loanId, payment);
+    // Make sure premium_amount and interest_amount are properly set
+    const processedPayment = {
+      ...payment,
+      premium_amount: payment.premium_amount !== undefined ? payment.premium_amount : 0,
+      interest_amount: payment.interest_amount !== undefined ? payment.interest_amount : 0
+    };
+    
+    return await window.api.addLoanPayment(loanId, processedPayment);
   },
   
   // CashBook

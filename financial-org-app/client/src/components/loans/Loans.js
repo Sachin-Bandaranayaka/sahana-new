@@ -25,7 +25,8 @@ import {
   MenuItem,
   InputAdornment,
   Switch,
-  FormControlLabel
+  FormControlLabel,
+  Radio
 } from '@mui/material';
 import { 
   Add as AddIcon, 
@@ -61,9 +62,11 @@ const Loans = () => {
     payments: []
   });
   const [paymentData, setPaymentData] = useState({
-    amount: '',
+    principalAmount: '',
+    interestAmount: '',
     date: new Date().toISOString().split('T')[0],
-    note: ''
+    note: '',
+    paymentType: 'both' // 'both', 'principal', or 'interest'
   });
   const [formErrors, setFormErrors] = useState({});
   const [snackbar, setSnackbar] = useState({
@@ -289,10 +292,14 @@ const Loans = () => {
 
   const handleOpenPaymentDialog = (loan) => {
     setCurrentLoan(loan);
+    const accruedInterest = calculateAccruedInterest(loan);
+    
     setPaymentData({
-      amount: '',
+      principalAmount: '',
+      interestAmount: accruedInterest.toFixed(2),
       date: new Date().toISOString().split('T')[0],
-      note: ''
+      note: '',
+      paymentType: 'both'
     });
     setOpenPaymentDialog(true);
   };
@@ -363,12 +370,20 @@ const Loans = () => {
   const validatePaymentForm = () => {
     const errors = {};
     
-    if (!paymentData.amount || paymentData.amount <= 0) {
+    const principalAmount = parseFloat(paymentData.principalAmount) || 0;
+    const interestAmount = parseFloat(paymentData.interestAmount) || 0;
+    const totalAmount = principalAmount + interestAmount;
+    
+    if (paymentData.paymentType === 'both' && totalAmount <= 0) {
       errors.amount = 'Please enter a valid payment amount';
+    } else if (paymentData.paymentType === 'principal' && principalAmount <= 0) {
+      errors.principalAmount = 'Please enter a valid principal amount';
+    } else if (paymentData.paymentType === 'interest' && interestAmount <= 0) {
+      errors.interestAmount = 'Please enter a valid interest amount';
     }
     
-    if (currentLoan && paymentData.amount > currentLoan.balance) {
-      errors.amount = 'Payment cannot exceed the remaining balance';
+    if (currentLoan && principalAmount > currentLoan.balance) {
+      errors.principalAmount = 'Principal payment cannot exceed the remaining balance';
     }
     
     if (!paymentData.date) {
@@ -465,11 +480,17 @@ const Loans = () => {
       // Calculate accrued interest up to the payment date
       const interestToDate = calculateAccruedInterest(currentLoan);
       
+      // Get amounts based on payment type
+      const principalAmount = parseFloat(paymentData.principalAmount) || 0;
+      const interestAmount = parseFloat(paymentData.interestAmount) || 0;
+      
+      // Prepare the payment record
       const newPayment = {
         date: paymentData.date,
-        amount: parseFloat(paymentData.amount),
+        amount: principalAmount + interestAmount,
         note: paymentData.note,
-        interestAmount: interestToDate // Include the interest amount in the payment
+        premium_amount: principalAmount,
+        interest_amount: interestAmount
       };
       
       await api.addLoanPayment(currentLoan.id, newPayment);
@@ -480,13 +501,13 @@ const Loans = () => {
         const member = await api.getMember(currentLoan.memberId);
         if (member && member.phone) {
           // Calculate new balance after payment
-          const updatedBalance = currentLoan.balance - newPayment.amount;
+          const updatedBalance = currentLoan.balance - principalAmount;
           
           // Send the SMS
           const smsResult = await smsService.sendLoanPaymentSMS(
             member.phone,
             currentLoan.id,
-            newPayment.amount,
+            principalAmount + interestAmount,
             updatedBalance
           );
           
@@ -922,21 +943,102 @@ const Loans = () => {
                 </Typography>
               )}
             </Grid>
+            
             <Grid item xs={12}>
-              <TextField
-                name="amount"
-                label="Payment Amount (ගෙවීම් මුදල)"
-                type="number"
-                value={paymentData.amount}
-                onChange={handlePaymentInputChange}
-                fullWidth
-                required
-                InputProps={{
-                  startAdornment: <InputAdornment position="start">Rs.</InputAdornment>,
-                  inputProps: { min: 0 }
-                }}
-              />
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Payment Type (ගෙවීම් වර්ගය):
+              </Typography>
+              <Grid container spacing={1}>
+                <Grid item>
+                  <FormControlLabel
+                    control={
+                      <Radio
+                        checked={paymentData.paymentType === 'both'}
+                        onChange={(e) => setPaymentData({...paymentData, paymentType: 'both'})}
+                        value="both"
+                        name="paymentType"
+                      />
+                    }
+                    label="Both Principal & Interest"
+                  />
+                </Grid>
+                <Grid item>
+                  <FormControlLabel
+                    control={
+                      <Radio
+                        checked={paymentData.paymentType === 'principal'}
+                        onChange={(e) => setPaymentData({...paymentData, paymentType: 'principal', interestAmount: '0'})}
+                        value="principal"
+                        name="paymentType"
+                      />
+                    }
+                    label="Principal Only"
+                  />
+                </Grid>
+                <Grid item>
+                  <FormControlLabel
+                    control={
+                      <Radio
+                        checked={paymentData.paymentType === 'interest'}
+                        onChange={(e) => setPaymentData({...paymentData, paymentType: 'interest', principalAmount: '0'})}
+                        value="interest"
+                        name="paymentType"
+                      />
+                    }
+                    label="Interest Only"
+                  />
+                </Grid>
+              </Grid>
             </Grid>
+            
+            {(paymentData.paymentType === 'both' || paymentData.paymentType === 'principal') && (
+              <Grid item xs={12}>
+                <TextField
+                  name="principalAmount"
+                  label="Principal Amount (මුල් මුදල)"
+                  type="number"
+                  value={paymentData.principalAmount}
+                  onChange={handlePaymentInputChange}
+                  fullWidth
+                  required
+                  error={!!formErrors.principalAmount}
+                  helperText={formErrors.principalAmount}
+                  InputProps={{
+                    startAdornment: <InputAdornment position="start">Rs.</InputAdornment>,
+                    inputProps: { min: 0 }
+                  }}
+                />
+              </Grid>
+            )}
+            
+            {(paymentData.paymentType === 'both' || paymentData.paymentType === 'interest') && (
+              <Grid item xs={12}>
+                <TextField
+                  name="interestAmount"
+                  label="Interest Amount (පොලී මුදල)"
+                  type="number"
+                  value={paymentData.interestAmount}
+                  onChange={handlePaymentInputChange}
+                  fullWidth
+                  required
+                  error={!!formErrors.interestAmount}
+                  helperText={formErrors.interestAmount}
+                  InputProps={{
+                    startAdornment: <InputAdornment position="start">Rs.</InputAdornment>,
+                    inputProps: { min: 0 }
+                  }}
+                />
+              </Grid>
+            )}
+            
+            {paymentData.paymentType === 'both' && (
+              <Grid item xs={12}>
+                <Typography variant="body2" sx={{ mt: 1 }}>
+                  Total Payment: {formatCurrency(parseFloat(paymentData.principalAmount || 0) + parseFloat(paymentData.interestAmount || 0))}
+                </Typography>
+              </Grid>
+            )}
+            
             <Grid item xs={12}>
               <TextField
                 name="date"
@@ -947,6 +1049,8 @@ const Loans = () => {
                 fullWidth
                 required
                 InputLabelProps={{ shrink: true }}
+                error={!!formErrors.date}
+                helperText={formErrors.date}
               />
             </Grid>
             <Grid item xs={12}>

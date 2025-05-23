@@ -907,7 +907,7 @@ ipcMain.handle('delete-loan', async (event, id) => {
 
 ipcMain.handle('add-loan-payment', async (event, loanId, payment) => {
   return new Promise((resolve, reject) => {
-    const { date, amount, note, interestAmount } = payment;
+    const { date, amount, note, premium_amount, interest_amount } = payment;
     
     // First get the loan details to identify the member
     db.get('SELECT * FROM loans WHERE id = ?', [loanId], (err, loan) => {
@@ -921,10 +921,10 @@ ipcMain.handle('add-loan-payment', async (event, loanId, payment) => {
         return;
       }
       
-      // Now add the payment record with interest information
+      // Now add the payment record with interest and principal information
       db.run(
         'INSERT INTO loan_payments (loanId, date, amount, note, interestAmount) VALUES (?, ?, ?, ?, ?)',
-        [loanId, date, amount, note, interestAmount || 0],
+        [loanId, date, amount, note, interest_amount || 0],
         function(err) {
           if (err) {
             reject(err);
@@ -933,10 +933,10 @@ ipcMain.handle('add-loan-payment', async (event, loanId, payment) => {
           
           const paymentId = this.lastID;
           
-          // Then update the loan balance and record interest
+          // Then update the loan balance (only reduce by principal amount) and record interest
           db.run(
             'UPDATE loans SET balance = balance - ?, interest = interest + ? WHERE id = ?',
-            [amount, interestAmount || 0, loanId],
+            [premium_amount || 0, interest_amount || 0, loanId],
             function(err) {
               if (err) {
                 reject(err);
@@ -948,7 +948,8 @@ ipcMain.handle('add-loan-payment', async (event, loanId, payment) => {
                 id: paymentId, 
                 loanId, 
                 memberId: loan.memberId, 
-                interestAmount: interestAmount || 0,
+                premium_amount: premium_amount || 0,
+                interest_amount: interest_amount || 0,
                 ...payment 
               });
             }
