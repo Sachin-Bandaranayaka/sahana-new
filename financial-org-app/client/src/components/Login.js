@@ -10,7 +10,8 @@ import {
   Stack,
   CircularProgress,
   InputAdornment,
-  IconButton
+  IconButton,
+  Link
 } from '@mui/material';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import api from '../services/api';
@@ -137,6 +138,21 @@ const Login = ({ onLoginSuccess }) => {
                 {loading ? <CircularProgress size={24} /> : 'Sign In'}
               </Button>
             </Stack>
+          </Box>
+          
+          {/* Synapse Labs Branding */}
+          <Box sx={{ mt: 3, textAlign: 'center', width: '100%' }}>
+            <Typography variant="body2" color="text.secondary">
+              Developed by{' '}
+              <Link 
+                href="https://synapselabs.lk" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                sx={{ fontWeight: 'bold' }}
+              >
+                Synapse Labs
+              </Link>
+            </Typography>
           </Box>
         </Paper>
       </Box>

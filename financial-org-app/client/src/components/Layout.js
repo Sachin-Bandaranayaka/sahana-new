@@ -107,6 +107,17 @@ const Layout = ({ user, onLogout }) => {
           <ListItemText primary="Logout (පිටවීම)" />
         </ListItem>
       </List>
+      
+      {/* Synapse Labs Branding */}
+      <Box sx={{ position: 'absolute', bottom: 0, width: '100%', p: 2, textAlign: 'center' }}>
+        <Divider sx={{ mb: 2 }} />
+        <Typography variant="caption" color="text.secondary">
+          Powered by
+        </Typography>
+        <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+          Synapse Labs
+        </Typography>
+      </Box>
     </div>
   );
 
@@ -131,7 +142,7 @@ const Layout = ({ user, onLogout }) => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            Sahana Welfare Management (සහන සුභසාධක කළමනාකරණය)
+            Sahana Welfare Management <Box component="span" sx={{ fontSize: '0.8em', fontStyle: 'italic', display: { xs: 'none', md: 'inline' } }}>(by Synapse Labs)</Box>
           </Typography>
           
           {/* User info and logout */}
@@ -197,11 +208,32 @@ const Layout = ({ user, onLogout }) => {
           overflowY: 'auto',
           height: 'calc(100vh - 64px)',
           backgroundColor: '#f5f5f5',
+          display: 'flex',
+          flexDirection: 'column'
         }}
       >
         {/* Debug message - will show in case of routing issues */}
         <Box sx={{ display: 'none' }}>Debug: Content should appear below</Box>
-        <Outlet />
+        
+        {/* Main content */}
+        <Box sx={{ flexGrow: 1 }}>
+          <Outlet />
+        </Box>
+        
+        {/* Footer with Synapse Labs branding */}
+        <Box 
+          component="footer" 
+          sx={{ 
+            mt: 3, 
+            py: 2, 
+            textAlign: 'center',
+            borderTop: '1px solid #e0e0e0'
+          }}
+        >
+          <Typography variant="body2" color="text.secondary">
+            © {new Date().getFullYear()} Developed by Synapse Labs. All rights reserved.
+          </Typography>
+        </Box>
       </Box>
     </Box>
   );
