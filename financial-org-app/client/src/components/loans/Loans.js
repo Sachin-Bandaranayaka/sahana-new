@@ -101,21 +101,25 @@ const Loans = () => {
     const daysDiff = Math.floor((today - lastPaymentDate) / (1000 * 60 * 60 * 24));
     
     // Handle daily vs monthly interest
-    let interestAmount = 0;
+    let newInterestAmount = 0;
     const interestRate = loan.interestRate / 100;
     
     if (loan.dailyInterest) {
       // Daily interest calculation
       const dailyRate = interestRate / 365;
-      interestAmount = loan.balance * dailyRate * daysDiff;
+      newInterestAmount = loan.balance * dailyRate * daysDiff;
     } else {
       // Monthly interest calculation (30 days per month)
       const monthlyRate = interestRate / 12;
       const monthsElapsed = daysDiff / 30;
-      interestAmount = loan.balance * monthlyRate * monthsElapsed;
+      newInterestAmount = loan.balance * monthlyRate * monthsElapsed;
     }
     
-    return interestAmount;
+    // Include any previously accumulated interest that wasn't fully paid
+    // The 'interest' field in loan tracks accumulated interest
+    const totalInterestAmount = newInterestAmount + (loan.interest || 0);
+    
+    return totalInterestAmount;
   };
 
   const fetchLoans = async () => {
@@ -292,11 +296,35 @@ const Loans = () => {
 
   const handleOpenPaymentDialog = (loan) => {
     setCurrentLoan(loan);
-    const accruedInterest = calculateAccruedInterest(loan);
+    
+    // Calculate new accrued interest (not including the already accumulated interest)
+    const lastPaymentDate = loan.payments && loan.payments.length > 0 
+      ? new Date(Math.max(...loan.payments.map(p => new Date(p.date).getTime())))
+      : new Date(loan.startDate);
+    
+    const today = new Date();
+    const daysDiff = Math.floor((today - lastPaymentDate) / (1000 * 60 * 60 * 24));
+    
+    let newAccruedInterest = 0;
+    const interestRate = loan.interestRate / 100;
+    
+    if (loan.dailyInterest) {
+      // Daily interest calculation
+      const dailyRate = interestRate / 365;
+      newAccruedInterest = loan.balance * dailyRate * daysDiff;
+    } else {
+      // Monthly interest calculation (30 days per month)
+      const monthlyRate = interestRate / 12;
+      const monthsElapsed = daysDiff / 30;
+      newAccruedInterest = loan.balance * monthlyRate * monthsElapsed;
+    }
+    
+    // Total interest is previously accumulated plus newly accrued
+    const totalInterest = (loan.interest || 0) + newAccruedInterest;
     
     setPaymentData({
       principalAmount: '',
-      interestAmount: accruedInterest.toFixed(2),
+      interestAmount: totalInterest.toFixed(2),
       date: new Date().toISOString().split('T')[0],
       note: '',
       paymentType: 'both'
@@ -938,9 +966,19 @@ const Loans = () => {
                 Balance: (ශේෂය:) {currentLoan ? formatCurrency(currentLoan.balance) : ''}
               </Typography>
               {currentLoan && (
-                <Typography variant="body2" color="primary" sx={{ mt: 1 }}>
-                  Accrued Interest: (පොලිය:) {formatCurrency(calculateAccruedInterest(currentLoan))}
-                </Typography>
+                <>
+                  <Typography variant="body2" color="secondary" sx={{ mt: 1 }}>
+                    Accumulated Unpaid Interest: {formatCurrency(currentLoan.interest || 0)}
+                  </Typography>
+                  <Typography variant="body2" color="primary" sx={{ mt: 1 }}>
+                    Newly Accrued Interest: {formatCurrency(
+                      parseFloat(paymentData.interestAmount || 0) - (currentLoan.interest || 0)
+                    )}
+                  </Typography>
+                  <Typography variant="subtitle2" color="error" sx={{ mt: 1 }}>
+                    Total Interest Due: {formatCurrency(parseFloat(paymentData.interestAmount || 0))}
+                  </Typography>
+                </>
               )}
             </Grid>
             

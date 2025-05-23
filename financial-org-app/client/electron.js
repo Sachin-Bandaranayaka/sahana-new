@@ -921,6 +921,34 @@ ipcMain.handle('add-loan-payment', async (event, loanId, payment) => {
         return;
       }
       
+      // Calculate the current accrued interest
+      const lastPaymentDate = loan.payments && loan.payments.length > 0 
+        ? new Date(Math.max(...loan.payments.map(p => new Date(p.date).getTime())))
+        : new Date(loan.startDate);
+      
+      const paymentDate = new Date(date);
+      const daysDiff = Math.floor((paymentDate - lastPaymentDate) / (1000 * 60 * 60 * 24));
+      
+      let newAccruedInterest = 0;
+      const interestRate = loan.interestRate / 100;
+      
+      if (loan.dailyInterest) {
+        // Daily interest calculation
+        const dailyRate = interestRate / 365;
+        newAccruedInterest = loan.balance * dailyRate * daysDiff;
+      } else {
+        // Monthly interest calculation (30 days per month)
+        const monthlyRate = interestRate / 12;
+        const monthsElapsed = daysDiff / 30;
+        newAccruedInterest = loan.balance * monthlyRate * monthsElapsed;
+      }
+      
+      // Total interest due is the previously accumulated interest plus the newly accrued interest
+      const totalInterestDue = (loan.interest || 0) + newAccruedInterest;
+      
+      // Calculate the remaining unpaid interest after this payment
+      let remainingInterest = Math.max(0, totalInterestDue - interest_amount);
+      
       // Now add the payment record with interest and principal information
       db.run(
         'INSERT INTO loan_payments (loanId, date, amount, note, interestAmount) VALUES (?, ?, ?, ?, ?)',
@@ -933,10 +961,10 @@ ipcMain.handle('add-loan-payment', async (event, loanId, payment) => {
           
           const paymentId = this.lastID;
           
-          // Then update the loan balance (only reduce by principal amount) and record interest
+          // Then update the loan balance and set the interest field to the remaining unpaid interest
           db.run(
-            'UPDATE loans SET balance = balance - ?, interest = interest + ? WHERE id = ?',
-            [premium_amount || 0, interest_amount || 0, loanId],
+            'UPDATE loans SET balance = balance - ?, interest = ? WHERE id = ?',
+            [premium_amount || 0, remainingInterest, loanId],
             function(err) {
               if (err) {
                 reject(err);
