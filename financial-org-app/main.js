@@ -815,150 +815,242 @@ ipcMain.handle('changePassword', async (event, userId, oldPassword, newPassword)
 });
 
 // Data backup and restore
+// Enhanced backup function with schema validation
 ipcMain.handle('backup-data', async (event, filePath) => {
   const fs = require('fs');
   const path = require('path');
   
   try {
-    // Get all data from tables
-    const members = await db.all('SELECT * FROM members');
-    const cashBook = await db.all('SELECT * FROM cash_book');
-    const loanBook = await db.all('SELECT * FROM loan_book');
-    const dividendBook = await db.all('SELECT * FROM dividend_book');
-    const accounts = await db.all('SELECT * FROM organization_accounts');
-    const transactions = await db.all('SELECT * FROM transactions');
-    const settings = await db.all('SELECT * FROM settings');
-    const meetings = await db.all('SELECT * FROM meetings');
-    
-    const data = {
-      members,
-      cashBook,
-      loanBook,
-      dividendBook,
-      accounts,
-      transactions,
-      settings,
-      meetings,
-      backupDate: new Date().toISOString()
+    // Get database schema information
+    const getTableSchema = async (tableName) => {
+      try {
+        const schema = await db.all(`PRAGMA table_info(${tableName})`);
+        return schema.map(col => ({ name: col.name, type: col.type, notnull: col.notnull, pk: col.pk }));
+      } catch (error) {
+        return null; // Table doesn't exist
+      }
     };
+
+    // Get all available tables
+    const tables = await db.all("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+    const tableNames = tables.map(t => t.name);
+
+    const data = {
+      metadata: {
+        version: '2.0',
+        backupDate: new Date().toISOString(),
+        application: 'sahana-financial-org',
+        schemaVersion: '1.0'
+      },
+      schemas: {},
+      data: {}
+    };
+
+    // Backup each table with its schema
+    for (const tableName of tableNames) {
+      try {
+        const schema = await getTableSchema(tableName);
+        const tableData = await db.all(`SELECT * FROM ${tableName}`);
+        
+        data.schemas[tableName] = schema;
+        data.data[tableName] = tableData;
+        
+        console.log(`Backed up table: ${tableName} (${tableData.length} records)`);
+      } catch (error) {
+        console.warn(`Failed to backup table ${tableName}:`, error.message);
+      }
+    }
     
     // Write to file
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
     
-    return { success: true, message: 'Backup created successfully' };
+    return { 
+      success: true, 
+      message: `Backup created successfully with ${tableNames.length} tables`,
+      tablesBackedUp: tableNames.length
+    };
   } catch (error) {
     console.error('Backup error:', error);
-    return { success: false, message: error.message };
+    return { success: false, message: `Backup failed: ${error.message}` };
   }
 });
 
+// Enhanced restore function with schema validation and dynamic mapping
 ipcMain.handle('restore-data', async (event, filePath) => {
   const fs = require('fs');
   
   try {
     // Read backup file
-    const backup = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    const backupContent = fs.readFileSync(filePath, 'utf8');
+    const backup = JSON.parse(backupContent);
+    
+    // Validate backup format
+    if (!backup.metadata && !backup.members) {
+      throw new Error('Invalid backup file format. This file may be corrupted or from an incompatible version.');
+    }
+    
+    // Handle legacy backup format (version 1.0)
+    let isLegacyFormat = !backup.metadata;
+    let backupData, backupSchemas;
+    
+    if (isLegacyFormat) {
+      console.log('Detected legacy backup format, converting...');
+      backupData = {
+        members: backup.members || [],
+        cash_book: backup.cashBook || [],
+        loan_book: backup.loanBook || [],
+        dividend_book: backup.dividendBook || [],
+        organization_accounts: backup.accounts || [],
+        transactions: backup.transactions || [],
+        settings: backup.settings || [],
+        meetings: backup.meetings || []
+      };
+      backupSchemas = null;
+    } else {
+      backupData = backup.data;
+      backupSchemas = backup.schemas;
+    }
+    
+    // Get current database schema
+    const getCurrentTableSchema = async (tableName) => {
+      try {
+        const schema = await db.all(`PRAGMA table_info(${tableName})`);
+        return schema.map(col => ({ name: col.name, type: col.type, notnull: col.notnull, pk: col.pk }));
+      } catch (error) {
+        return null;
+      }
+    };
+    
+    // Get current tables
+    const currentTables = await db.all("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+    const currentTableNames = currentTables.map(t => t.name);
     
     // Begin transaction
     await db.run('BEGIN TRANSACTION');
     
-    // Clear existing data
-    await db.run('DELETE FROM members');
-    await db.run('DELETE FROM cash_book');
-    await db.run('DELETE FROM loan_book');
-    await db.run('DELETE FROM dividend_book');
-    await db.run('DELETE FROM organization_accounts');
-    await db.run('DELETE FROM transactions');
-    await db.run('DELETE FROM settings');
-    await db.run('DELETE FROM meetings');
+    let restoredTables = 0;
+    let skippedTables = [];
+    let warnings = [];
     
-    // Restore members
-    for (const member of backup.members) {
-      await db.run(
-        'INSERT INTO members (id, member_id, name, address, contact, joined_date) VALUES (?, ?, ?, ?, ?, ?)',
-        member.id, member.member_id, member.name, member.address, member.contact, member.joined_date
-      );
-    }
-    
-    // Restore cash book
-    for (const entry of backup.cashBook) {
-      await db.run(
-        'INSERT INTO cash_book (id, member_id, date, description, amount) VALUES (?, ?, ?, ?, ?)',
-        entry.id, entry.member_id, entry.date, entry.description, entry.amount
-      );
-    }
-    
-    // Restore loan book
-    for (const loan of backup.loanBook) {
-      await db.run(
-        `INSERT INTO loan_book 
-         (id, member_id, date, loan_type, amount_taken, amount_paid, loan_premium, loan_interest, 
-          total, is_active, interest_rate, last_interest_paid_date) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        loan.id, loan.member_id, loan.date, loan.loan_type, loan.amount_taken, 
-        loan.amount_paid, loan.loan_premium, loan.loan_interest, loan.total, 
-        loan.is_active, loan.interest_rate, loan.last_interest_paid_date
-      );
-    }
-    
-    // Restore dividend book
-    for (const entry of backup.dividendBook) {
-      await db.run(
-        `INSERT INTO dividend_book 
-         (id, member_id, date, description, share_amount, annual_interest, 
-          attending_bonus, deductibles, total, quarter, year) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        entry.id, entry.member_id, entry.date, entry.description, entry.share_amount, 
-        entry.annual_interest, entry.attending_bonus, entry.deductibles, entry.total, 
-        entry.quarter, entry.year
-      );
-    }
-    
-    // Restore accounts
-    for (const account of backup.accounts) {
-      await db.run(
-        `INSERT INTO organization_accounts 
-         (id, account_name, bank_name, account_type, balance, interest_rate, start_date, maturity_date) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        account.id, account.account_name, account.bank_name, account.account_type, 
-        account.balance, account.interest_rate, account.start_date, account.maturity_date
-      );
-    }
-    
-    // Restore transactions
-    for (const transaction of backup.transactions) {
-      await db.run(
-        'INSERT INTO transactions (id, date, description, amount, transaction_type, account_id) VALUES (?, ?, ?, ?, ?, ?)',
-        transaction.id, transaction.date, transaction.description, transaction.amount, 
-        transaction.transaction_type, transaction.account_id
-      );
-    }
-    
-    // Restore settings
-    for (const setting of backup.settings) {
-      await db.run(
-        'INSERT INTO settings (id, name, value) VALUES (?, ?, ?)',
-        setting.id, setting.name, setting.value
-      );
-    }
-    
-    // Restore meetings
-    for (const meeting of backup.meetings) {
-      await db.run(
-        'INSERT INTO meetings (id, date, description, attendees) VALUES (?, ?, ?, ?)',
-        meeting.id, meeting.date, meeting.description, meeting.attendees
-      );
+    // Process each table in backup
+    for (const [tableName, tableData] of Object.entries(backupData)) {
+      if (!Array.isArray(tableData) || tableData.length === 0) {
+        console.log(`Skipping empty table: ${tableName}`);
+        continue;
+      }
+      
+      // Check if table exists in current database
+      if (!currentTableNames.includes(tableName)) {
+        console.warn(`Table ${tableName} does not exist in current database, skipping...`);
+        skippedTables.push(tableName);
+        continue;
+      }
+      
+      try {
+        // Get current table schema
+        const currentSchema = await getCurrentTableSchema(tableName);
+        const currentColumns = currentSchema.map(col => col.name);
+        
+        // Get backup table schema (if available)
+        let backupColumns;
+        if (backupSchemas && backupSchemas[tableName]) {
+          backupColumns = backupSchemas[tableName].map(col => col.name);
+        } else {
+          // Infer from first record
+          backupColumns = tableData.length > 0 ? Object.keys(tableData[0]) : [];
+        }
+        
+        // Find common columns
+        const commonColumns = currentColumns.filter(col => backupColumns.includes(col));
+        
+        if (commonColumns.length === 0) {
+          console.warn(`No matching columns found for table ${tableName}, skipping...`);
+          skippedTables.push(tableName);
+          continue;
+        }
+        
+        // Check for missing columns
+        const missingInCurrent = backupColumns.filter(col => !currentColumns.includes(col));
+        const missingInBackup = currentColumns.filter(col => !backupColumns.includes(col));
+        
+        if (missingInCurrent.length > 0) {
+          warnings.push(`Table ${tableName}: Backup contains columns not in current schema: ${missingInCurrent.join(', ')}`);
+        }
+        if (missingInBackup.length > 0) {
+          warnings.push(`Table ${tableName}: Current schema has columns not in backup: ${missingInBackup.join(', ')}`);
+        }
+        
+        // Clear existing data
+        await db.run(`DELETE FROM ${tableName}`);
+        
+        // Prepare insert statement with common columns
+        const placeholders = commonColumns.map(() => '?').join(', ');
+        const insertSQL = `INSERT INTO ${tableName} (${commonColumns.join(', ')}) VALUES (${placeholders})`;
+        
+        // Insert data
+        let recordsInserted = 0;
+        for (const record of tableData) {
+          try {
+            const values = commonColumns.map(col => record[col] !== undefined ? record[col] : null);
+            await db.run(insertSQL, values);
+            recordsInserted++;
+          } catch (recordError) {
+            console.warn(`Failed to insert record in ${tableName}:`, recordError.message);
+            // Continue with next record instead of failing completely
+          }
+        }
+        
+        console.log(`Restored table ${tableName}: ${recordsInserted}/${tableData.length} records`);
+        restoredTables++;
+        
+      } catch (tableError) {
+        console.error(`Error restoring table ${tableName}:`, tableError.message);
+        skippedTables.push(tableName);
+      }
     }
     
     // Commit transaction
     await db.run('COMMIT');
     
-    return { success: true, message: 'Data restored successfully' };
+    // Prepare result message
+    let message = `Data restored successfully. ${restoredTables} tables restored.`;
+    if (skippedTables.length > 0) {
+      message += ` Skipped tables: ${skippedTables.join(', ')}.`;
+    }
+    if (warnings.length > 0) {
+      message += ` Warnings: ${warnings.length} schema differences detected.`;
+    }
+    
+    return { 
+      success: true, 
+      message,
+      restoredTables,
+      skippedTables,
+      warnings,
+      isLegacyFormat
+    };
+    
   } catch (error) {
     // Rollback in case of error
-    await db.run('ROLLBACK');
+    try {
+      await db.run('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('Rollback failed:', rollbackError.message);
+    }
+    
     console.error('Restore error:', error);
-    return { success: false, message: error.message };
+    
+    // Provide more specific error messages
+    let errorMessage = 'Restore failed: ';
+    if (error.message.includes('JSON')) {
+      errorMessage += 'Invalid backup file format or corrupted file.';
+    } else if (error.message.includes('SQLITE')) {
+      errorMessage += 'Database error occurred during restore.';
+    } else {
+      errorMessage += error.message;
+    }
+    
+    return { success: false, message: errorMessage, error: error.message };
   }
 });
 
@@ -1810,4 +1902,4 @@ ipcMain.handle('get-next-scheduled-backup', async () => {
     console.error('Error getting next scheduled backup time:', error);
     return { scheduled: false, error: error.message };
   }
-}); 
+});

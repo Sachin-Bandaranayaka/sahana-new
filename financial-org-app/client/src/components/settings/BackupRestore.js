@@ -129,11 +129,15 @@ const BackupRestore = () => {
       setBackupProgress(100);
       setBackupResult(result);
       
+      // Enhanced success message with details
+      let message = result.message || 'Backup completed successfully';
+      if (result.success && result.tablesBackedUp) {
+        message = `Backup completed successfully! ${result.tablesBackedUp} tables backed up.`;
+      }
+      
       setSnackbar({
         open: true,
-        message: result.success 
-          ? `Backup completed successfully at ${result.path}` 
-          : `Backup failed: ${result.error}`,
+        message: result.success ? message : result.message || 'Backup failed',
         severity: result.success ? 'success' : 'error'
       });
       
@@ -180,12 +184,32 @@ const BackupRestore = () => {
       setRestoreProgress(100);
       setRestoreResult(result);
       
+      // Enhanced success/warning messages
+      let message = result.message || 'Restore completed successfully';
+      let severity = result.success ? 'success' : 'error';
+      
+      if (result.success) {
+        // Check for warnings or skipped tables
+        if (result.warnings && result.warnings.length > 0) {
+          severity = 'warning';
+          message += ' Note: Some schema differences were detected.';
+        }
+        if (result.skippedTables && result.skippedTables.length > 0) {
+          severity = 'warning';
+          message += ` ${result.skippedTables.length} tables were skipped.`;
+        }
+        if (result.isLegacyFormat) {
+          message += ' (Legacy backup format detected and converted)';
+        }
+        
+        // Add restart notification
+        message += ' Application will restart in 3 seconds.';
+      }
+      
       setSnackbar({
         open: true,
-        message: result.success 
-          ? 'Restore completed successfully! Application will restart.' 
-          : `Restore failed: ${result.error}`,
-        severity: result.success ? 'success' : 'error'
+        message,
+        severity
       });
       
       // If successful, application will restart automatically after 3 seconds
@@ -328,15 +352,21 @@ const BackupRestore = () => {
             )}
             
             {backupResult && (
-              <Alert 
-                severity={backupResult.success ? 'success' : 'error'} 
-                sx={{ mb: 2 }}
-              >
-                {backupResult.success 
-                  ? `Backup completed successfully at ${backupResult.path}` 
-                  : `Backup failed: ${backupResult.error}`
-                }
-              </Alert>
+              <Box sx={{ mb: 2 }}>
+                <Alert 
+                  severity={backupResult.success ? 'success' : 'error'} 
+                  sx={{ mb: 1 }}
+                >
+                  {backupResult.message || (backupResult.success 
+                    ? 'Backup completed successfully' 
+                    : `Backup failed: ${backupResult.error}`)}
+                </Alert>
+                {backupResult.success && backupResult.tablesBackedUp && (
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    📊 {backupResult.tablesBackedUp} tables backed up
+                  </Typography>
+                )}
+              </Box>
             )}
             
             <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -402,15 +432,59 @@ const BackupRestore = () => {
             )}
             
             {restoreResult && (
-              <Alert 
-                severity={restoreResult.success ? 'success' : 'error'} 
-                sx={{ mb: 2 }}
-              >
-                {restoreResult.success 
-                  ? 'Restore completed successfully! Application will restart.' 
-                  : `Restore failed: ${restoreResult.error}`
-                }
-              </Alert>
+              <Box sx={{ mb: 2 }}>
+                <Alert 
+                  severity={restoreResult.success 
+                    ? (restoreResult.warnings?.length > 0 || restoreResult.skippedTables?.length > 0 ? 'warning' : 'success')
+                    : 'error'
+                  } 
+                  sx={{ mb: 1 }}
+                >
+                  {restoreResult.message || (restoreResult.success 
+                    ? 'Restore completed successfully! Application will restart.' 
+                    : `Restore failed: ${restoreResult.error}`)}
+                </Alert>
+                
+                {restoreResult.success && (
+                  <Box sx={{ mt: 1 }}>
+                    {restoreResult.restoredTables && (
+                      <Typography variant="body2" color="text.secondary">
+                        ✅ {restoreResult.restoredTables} tables restored successfully
+                      </Typography>
+                    )}
+                    
+                    {restoreResult.isLegacyFormat && (
+                      <Typography variant="body2" color="info.main">
+                        ℹ️ Legacy backup format detected and converted
+                      </Typography>
+                    )}
+                    
+                    {restoreResult.skippedTables?.length > 0 && (
+                      <Typography variant="body2" color="warning.main">
+                        ⚠️ {restoreResult.skippedTables.length} tables skipped: {restoreResult.skippedTables.join(', ')}
+                      </Typography>
+                    )}
+                    
+                    {restoreResult.warnings?.length > 0 && (
+                      <Box sx={{ mt: 1 }}>
+                        <Typography variant="body2" color="warning.main" sx={{ fontWeight: 'bold' }}>
+                          ⚠️ Schema Warnings:
+                        </Typography>
+                        {restoreResult.warnings.slice(0, 3).map((warning, index) => (
+                          <Typography key={index} variant="body2" color="text.secondary" sx={{ ml: 2, fontSize: '0.75rem' }}>
+                            • {warning}
+                          </Typography>
+                        ))}
+                        {restoreResult.warnings.length > 3 && (
+                          <Typography variant="body2" color="text.secondary" sx={{ ml: 2, fontSize: '0.75rem' }}>
+                            ... and {restoreResult.warnings.length - 3} more warnings
+                          </Typography>
+                        )}
+                      </Box>
+                    )}
+                  </Box>
+                )}
+              </Box>
             )}
             
             <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -605,4 +679,4 @@ const BackupRestore = () => {
   );
 };
 
-export default BackupRestore; 
+export default BackupRestore;
