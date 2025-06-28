@@ -115,11 +115,8 @@ const Loans = () => {
       newInterestAmount = loan.balance * monthlyRate * monthsElapsed;
     }
     
-    // Include any previously accumulated interest that wasn't fully paid
-    // The 'interest' field in loan tracks accumulated interest
-    const totalInterestAmount = newInterestAmount + (loan.interest || 0);
-    
-    return totalInterestAmount;
+    // Return only the newly accrued interest
+    return newInterestAmount;
   };
 
   const fetchLoans = async () => {
@@ -127,16 +124,8 @@ const Loans = () => {
     try {
       const data = await api.getLoans();
       
-      // Calculate interest for each loan
-      const loansWithInterest = data.map(loan => {
-        const interest = calculateAccruedInterest(loan);
-        return {
-          ...loan,
-          interest: interest
-        };
-      });
-      
-      setLoans(loansWithInterest);
+      // Set loans data (interest is calculated on-demand when needed)
+      setLoans(data);
       setLoading(false);
     } catch (error) {
       console.error("Error fetching loans:", error);
@@ -297,34 +286,12 @@ const Loans = () => {
   const handleOpenPaymentDialog = (loan) => {
     setCurrentLoan(loan);
     
-    // Calculate new accrued interest (not including the already accumulated interest)
-    const lastPaymentDate = loan.payments && loan.payments.length > 0 
-      ? new Date(Math.max(...loan.payments.map(p => new Date(p.date).getTime())))
-      : new Date(loan.startDate);
-    
-    const today = new Date();
-    const daysDiff = Math.floor((today - lastPaymentDate) / (1000 * 60 * 60 * 24));
-    
-    let newAccruedInterest = 0;
-    const interestRate = loan.interestRate / 100;
-    
-    if (loan.dailyInterest) {
-      // Daily interest calculation
-      const dailyRate = interestRate / 365;
-      newAccruedInterest = loan.balance * dailyRate * daysDiff;
-    } else {
-      // Monthly interest calculation (30 days per month)
-      const monthlyRate = interestRate / 12;
-      const monthsElapsed = daysDiff / 30;
-      newAccruedInterest = loan.balance * monthlyRate * monthsElapsed;
-    }
-    
-    // Total interest is previously accumulated plus newly accrued
-    const totalInterest = (loan.interest || 0) + newAccruedInterest;
+    // Calculate newly accrued interest only
+    const accruedInterest = calculateAccruedInterest(loan);
     
     setPaymentData({
       principalAmount: '',
-      interestAmount: totalInterest.toFixed(2),
+      interestAmount: accruedInterest.toFixed(2),
       date: new Date().toISOString().split('T')[0],
       note: '',
       paymentType: 'both'
@@ -728,7 +695,7 @@ const Loans = () => {
                             {new Date(loan.startDate).toLocaleDateString()} - {new Date(loan.endDate).toLocaleDateString()}
                           </Typography>
                         </TableCell>
-                        <TableCell>{formatCurrency(loan.interest)}</TableCell>
+                        <TableCell>{formatCurrency(calculateAccruedInterest(loan))}</TableCell>
                         <TableCell>{formatCurrency(loan.balance)}</TableCell>
                         <TableCell>
                           <Chip 
@@ -967,16 +934,8 @@ const Loans = () => {
               </Typography>
               {currentLoan && (
                 <>
-                  <Typography variant="body2" color="secondary" sx={{ mt: 1 }}>
-                    Accumulated Unpaid Interest: {formatCurrency(currentLoan.interest || 0)}
-                  </Typography>
                   <Typography variant="body2" color="primary" sx={{ mt: 1 }}>
-                    Newly Accrued Interest: {formatCurrency(
-                      parseFloat(paymentData.interestAmount || 0) - (currentLoan.interest || 0)
-                    )}
-                  </Typography>
-                  <Typography variant="subtitle2" color="error" sx={{ mt: 1 }}>
-                    Total Interest Due: {formatCurrency(parseFloat(paymentData.interestAmount || 0))}
+                    Accrued Interest: {formatCurrency(parseFloat(paymentData.interestAmount || 0))}
                   </Typography>
                 </>
               )}

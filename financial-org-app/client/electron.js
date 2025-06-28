@@ -943,11 +943,10 @@ ipcMain.handle('add-loan-payment', async (event, loanId, payment) => {
         newAccruedInterest = loan.balance * monthlyRate * monthsElapsed;
       }
       
-      // Total interest due is the previously accumulated interest plus the newly accrued interest
-      const totalInterestDue = (loan.interest || 0) + newAccruedInterest;
+      // Only use newly accrued interest (no accumulated interest tracking)
+      const totalInterestDue = newAccruedInterest;
       
-      // Calculate the remaining unpaid interest after this payment
-      let remainingInterest = Math.max(0, totalInterestDue - interest_amount);
+      // No remaining interest tracking needed
       
       // Now add the payment record with interest and principal information
       db.run(
@@ -961,10 +960,10 @@ ipcMain.handle('add-loan-payment', async (event, loanId, payment) => {
           
           const paymentId = this.lastID;
           
-          // Then update the loan balance and set the interest field to the remaining unpaid interest
+          // Then update the loan balance (no interest field tracking needed)
           db.run(
-            'UPDATE loans SET balance = balance - ?, interest = ? WHERE id = ?',
-            [premium_amount || 0, remainingInterest, loanId],
+            'UPDATE loans SET balance = balance - ? WHERE id = ?',
+            [premium_amount || 0, loanId],
             function(err) {
               if (err) {
                 reject(err);
