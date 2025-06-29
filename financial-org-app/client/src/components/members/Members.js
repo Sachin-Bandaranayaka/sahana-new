@@ -23,7 +23,9 @@ import {
   Chip,
   Snackbar,
   Alert,
-  MenuItem
+  MenuItem,
+  InputAdornment,
+  TableSortLabel
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -31,7 +33,9 @@ import {
   Delete as DeleteIcon,
   Phone as PhoneIcon,
   Email as EmailIcon,
-  AccountBox as AccountIcon
+  AccountBox as AccountIcon,
+  Search as SearchIcon,
+  Clear as ClearIcon
 } from '@mui/icons-material';
 import api from '../../services/api';
 import smsService from '../../services/smsService';
@@ -45,6 +49,14 @@ const Members = () => {
   const [currentMember, setCurrentMember] = useState(null);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  
+  // Search and Sort state
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortConfig, setSortConfig] = useState({
+    key: null,
+    direction: 'asc'
+  });
+  
   const [formData, setFormData] = useState({
     member_id: '',
     name: '',
@@ -79,6 +91,60 @@ const Members = () => {
         severity: 'error'
       });
     }
+  };
+
+  // Search functionality
+  const handleSearchChange = (event) => {
+    setSearchTerm(event.target.value);
+    setPage(0); // Reset to first page when searching
+  };
+
+  const handleClearSearch = () => {
+    setSearchTerm('');
+    setPage(0);
+  };
+
+  // Sorting functionality
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+    setPage(0); // Reset to first page when sorting
+  };
+
+  // Filter and sort members
+  const getFilteredAndSortedMembers = () => {
+    let filteredMembers = [...members];
+
+    // Apply search filter
+    if (searchTerm) {
+      filteredMembers = filteredMembers.filter(member =>
+        member.member_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        member.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        member.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        member.status?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Apply sorting
+    if (sortConfig.key) {
+      filteredMembers.sort((a, b) => {
+        const aValue = a[sortConfig.key];
+        const bValue = b[sortConfig.key];
+        
+        if (aValue < bValue) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+
+    return filteredMembers;
   };
 
   const handleChangePage = (event, newPage) => {
@@ -257,15 +323,140 @@ const Members = () => {
         </Button>
       </Box>
 
+      {/* Search Bar */}
+      <Box sx={{ mb: 2 }}>
+        <TextField
+          fullWidth
+          placeholder="Search by Member ID, Name, Phone, or Status..."
+          value={searchTerm}
+          onChange={handleSearchChange}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon />
+              </InputAdornment>
+            ),
+            endAdornment: searchTerm && (
+              <InputAdornment position="end">
+                <IconButton
+                  aria-label="clear search"
+                  onClick={handleClearSearch}
+                  edge="end"
+                >
+                  <ClearIcon />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+          sx={{ maxWidth: 400 }}
+        />
+      </Box>
+
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Member ID</TableCell>
-              <TableCell>Name</TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={sortConfig.key === 'member_id'}
+                  direction={sortConfig.key === 'member_id' ? sortConfig.direction : 'asc'}
+                  onClick={() => handleSort('member_id')}
+                  sx={{
+                    '& .MuiTableSortLabel-icon': {
+                      opacity: 1,
+                      color: 'primary.main'
+                    },
+                    '&:hover': {
+                      color: 'primary.main'
+                    },
+                    '&.Mui-active': {
+                      color: 'primary.main',
+                      '& .MuiTableSortLabel-icon': {
+                        opacity: 1,
+                        color: 'primary.main'
+                      }
+                    }
+                  }}
+                >
+                  Member ID
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={sortConfig.key === 'name'}
+                  direction={sortConfig.key === 'name' ? sortConfig.direction : 'asc'}
+                  onClick={() => handleSort('name')}
+                  sx={{
+                    '& .MuiTableSortLabel-icon': {
+                      opacity: 1,
+                      color: 'primary.main'
+                    },
+                    '&:hover': {
+                      color: 'primary.main'
+                    },
+                    '&.Mui-active': {
+                      color: 'primary.main',
+                      '& .MuiTableSortLabel-icon': {
+                        opacity: 1,
+                        color: 'primary.main'
+                      }
+                    }
+                  }}
+                >
+                  Name
+                </TableSortLabel>
+              </TableCell>
               <TableCell>Contact</TableCell>
-              <TableCell>Join Date</TableCell>
-              <TableCell>Status</TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={sortConfig.key === 'joinDate'}
+                  direction={sortConfig.key === 'joinDate' ? sortConfig.direction : 'asc'}
+                  onClick={() => handleSort('joinDate')}
+                  sx={{
+                    '& .MuiTableSortLabel-icon': {
+                      opacity: 1,
+                      color: 'primary.main'
+                    },
+                    '&:hover': {
+                      color: 'primary.main'
+                    },
+                    '&.Mui-active': {
+                      color: 'primary.main',
+                      '& .MuiTableSortLabel-icon': {
+                        opacity: 1,
+                        color: 'primary.main'
+                      }
+                    }
+                  }}
+                >
+                  Join Date
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={sortConfig.key === 'status'}
+                  direction={sortConfig.key === 'status' ? sortConfig.direction : 'asc'}
+                  onClick={() => handleSort('status')}
+                  sx={{
+                    '& .MuiTableSortLabel-icon': {
+                      opacity: 1,
+                      color: 'primary.main'
+                    },
+                    '&:hover': {
+                      color: 'primary.main'
+                    },
+                    '&.Mui-active': {
+                      color: 'primary.main',
+                      '& .MuiTableSortLabel-icon': {
+                        opacity: 1,
+                        color: 'primary.main'
+                      }
+                    }
+                  }}
+                >
+                  Status
+                </TableSortLabel>
+              </TableCell>
               <TableCell>Actions</TableCell>
             </TableRow>
           </TableHead>
@@ -277,7 +468,7 @@ const Members = () => {
                 </TableCell>
               </TableRow>
             ) : (
-              members
+              getFilteredAndSortedMembers()
                 .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                 .map((member) => (
                   <TableRow key={member.id}>
@@ -324,7 +515,7 @@ const Members = () => {
         <TablePagination
           rowsPerPageOptions={[5, 10, 25]}
           component="div"
-          count={members.length}
+          count={getFilteredAndSortedMembers().length}
           rowsPerPage={rowsPerPage}
           page={page}
           onPageChange={handleChangePage}
