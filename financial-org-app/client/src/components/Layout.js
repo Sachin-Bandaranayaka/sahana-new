@@ -30,6 +30,7 @@ import SavingsIcon from '@mui/icons-material/Savings';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PersonIcon from '@mui/icons-material/Person';
 import CalculateIcon from '@mui/icons-material/Calculate';
+import MessageIcon from '@mui/icons-material/Message'; // New import
 
 const drawerWidth = 240;
 
@@ -63,6 +64,7 @@ const Layout = ({ user, onLogout }) => {
     { text: 'Dividends (ලාභාංශ)', icon: <SavingsIcon />, path: '/dividends' },
     { text: 'Bank Accounts (බැංකු ගිණුම්)', icon: <AccountBalanceIcon />, path: '/accounts' },
     { text: 'Reports (වාර්තා)', icon: <AssessmentIcon />, path: '/reports' },
+    { text: 'Messages (පණිවුඩ)', icon: <MessageIcon />, path: '/messages' }, // New item
     { text: 'Settings (සැකසුම්)', icon: <SettingsIcon />, path: '/settings' },
   ];
 
@@ -239,4 +241,4 @@ const Layout = ({ user, onLogout }) => {
   );
 };
 
-export default Layout; 
+export default Layout;

@@ -1,3 +1,5 @@
+// financial-org-app\client\src\components\members\Members.js
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -166,7 +168,7 @@ const Members = () => {
         member_id: member.member_id,
         name: member.name,
         address: member.address,
-        phone: member.phone || member.mobile,
+        phone: member.phone,
         joinDate: member.joinDate,
         status: member.status
       });
@@ -227,22 +229,86 @@ const Members = () => {
     return Object.keys(errors).length === 0;
   };
 
+  // const handleSubmit = async () => {
+  //   if (!validateForm()) return;
+    
+  //   try {
+  //     if (editMode && currentMember) {
+  //       // Update existing member - Use window.api if using Electron IPC directly
+  //       await window.api.updateMember(currentMember.id, formData);
+  //       setSnackbar({
+  //         open: true,
+  //         message: 'Member updated successfully',
+  //         severity: 'success'
+  //       });
+  //     } else {
+  //       // Add new member
+  //       const response = await api.addMember(formData);
+        
+  //       // Send SMS notification for registration
+  //       try {
+  //         if (formData.phone) {
+  //           const smsResult = await smsService.sendMemberRegistrationSMS(
+  //             formData.phone,
+  //             response.member_id || formData.member_id
+  //           );
+            
+  //           console.log('Member registration SMS result:', smsResult);
+  //         }
+  //       } catch (smsError) {
+  //         console.error('Error sending member registration SMS:', smsError);
+  //       }
+        
+  //       setSnackbar({
+  //         open: true,
+  //         message: 'Member added successfully',
+  //         severity: 'success'
+  //       });
+  //     }
+      
+  //     // Refresh the members list after update
+  //     fetchMembers();
+  //     handleCloseDialog();
+  //   } catch (error) {
+  //     console.error("Error saving member:", error);
+  //     setSnackbar({
+  //       open: true,
+  //       message: 'Failed to save member data',
+  //       severity: 'error'
+  //     });
+  //   }
+  // };
+
+
   const handleSubmit = async () => {
-    if (!validateForm()) return;
+    console.log('handleSubmit called');
+    if (!validateForm()) {
+      console.log('Form validation failed');
+      return;
+    }
     
     try {
       if (editMode && currentMember) {
-        // Update existing member
-        await api.updateMember(currentMember.id, formData);
-        setSnackbar({
-          open: true,
-          message: 'Member updated successfully',
-          severity: 'success'
-        });
+        console.log('Attempting to update member with ID:', currentMember.id, 'and data:', formData);
+        const result = await window.api.updateMember(currentMember.id, formData);
+        console.log('Result from updateMember IPC call:', result);
+        if (result.success) {
+          setSnackbar({
+            open: true,
+            message: 'Member updated successfully',
+            severity: 'success'
+          });
+          fetchMembers();
+          handleCloseDialog();
+        } else {
+          console.error('Update failed with message:', result.message);
+          throw new Error(result.message || 'Unknown error during update');
+        }
       } else {
-        // Add new member
+        // Add new member logic (if applicable)
+        console.log('Attempting to add new member with data:', formData);
         const response = await api.addMember(formData);
-        
+        console.log('Result from addMember API call:', response);
         // Send SMS notification for registration
         try {
           if (formData.phone) {
@@ -250,28 +316,24 @@ const Members = () => {
               formData.phone,
               response.member_id || formData.member_id
             );
-            
             console.log('Member registration SMS result:', smsResult);
           }
         } catch (smsError) {
           console.error('Error sending member registration SMS:', smsError);
         }
-        
         setSnackbar({
           open: true,
           message: 'Member added successfully',
           severity: 'success'
         });
+        fetchMembers();
+        handleCloseDialog();
       }
-      
-      // Refresh the members list after update
-      fetchMembers();
-      handleCloseDialog();
     } catch (error) {
-      console.error("Error saving member:", error);
+      console.error('Error in handleSubmit:', error);
       setSnackbar({
         open: true,
-        message: 'Failed to save member data',
+        message: `Failed to save member: ${error.message}`,
         severity: 'error'
       });
     }

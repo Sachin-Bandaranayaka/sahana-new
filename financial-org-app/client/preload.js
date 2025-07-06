@@ -1,3 +1,5 @@
+// financial-org-app\client\preload.js
+
 const { contextBridge, ipcRenderer } = require('electron');
 
 // Log the preload script execution for debugging
@@ -19,7 +21,12 @@ contextBridge.exposeInMainWorld(
     getMember: (memberId) => ipcRenderer.invoke('get-member', memberId),
     getMemberTransactions: (memberId) => ipcRenderer.invoke('get-member-transactions', memberId),
     addMember: (member) => ipcRenderer.invoke('add-member', member),
-    updateMember: (id, member) => ipcRenderer.invoke('update-member', id, member),
+    // updateMember: (id, member) => ipcRenderer.invoke('update-member', id, member),
+    updateMember: (id, member) => {
+      console.log('Preload: calling update-member with', {id, member}); // Debug log
+      return ipcRenderer.invoke('update-member', id, member);
+    },
+    
     deleteMember: (id) => ipcRenderer.invoke('delete-member', id),
     
     // Loans

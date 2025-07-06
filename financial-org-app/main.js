@@ -1,3 +1,5 @@
+// financial-org-app\main.js
+
 const { app, BrowserWindow, ipcMain, session } = require('electron');
 const path = require('path');
 const isDev = require('electron-is-dev');
@@ -31,7 +33,7 @@ async function loadAutoBackupSettings() {
     const autoBackupFrequency = await getSetting('auto_backup_frequency', 'weekly');
     const autoBackupTime = await getSetting('auto_backup_time', '00:00');
     const autoBackupPath = await getSetting('auto_backup_path', '');
-    
+
     return {
       enabled: autoBackupEnabled === 'true',
       frequency: autoBackupFrequency,
@@ -57,14 +59,14 @@ function calculateNextBackupTime(settings) {
     console.log('Auto backup disabled or path not set');
     return null;
   }
-  
+
   const now = new Date();
   const [hours, minutes] = settings.time.split(':').map(Number);
-  
+
   // Create a date object for today at the specified time
   const scheduledTime = new Date(now);
   scheduledTime.setHours(hours, minutes, 0, 0);
-  
+
   // If the time has already passed today, we need to schedule for the future
   if (scheduledTime <= now) {
     // For daily backups, schedule for tomorrow
@@ -82,38 +84,38 @@ function calculateNextBackupTime(settings) {
   } else {
     // If time hasn't passed today, but we're on a weekly/monthly schedule,
     // check if we need to schedule it further in the future
-    
+
     // For weekly backups, if the last backup was less than a week ago, schedule for next week
     if (settings.frequency === 'weekly' && settings.lastBackup) {
       const lastBackup = new Date(settings.lastBackup);
       const daysSinceLastBackup = Math.floor((now - lastBackup) / (1000 * 60 * 60 * 24));
-      
+
       if (daysSinceLastBackup < 7) {
         // Find the next backup date (lastBackup + 7 days)
         const nextBackupDate = new Date(lastBackup);
         nextBackupDate.setDate(nextBackupDate.getDate() + 7);
         // Set the correct time
         nextBackupDate.setHours(hours, minutes, 0, 0);
-        
+
         // If this date is in the future, use it
         if (nextBackupDate > now) {
           return nextBackupDate;
         }
       }
     }
-    
+
     // For monthly backups, if the last backup was less than a month ago, schedule for next month
     if (settings.frequency === 'monthly' && settings.lastBackup) {
       const lastBackup = new Date(settings.lastBackup);
       const daysSinceLastBackup = Math.floor((now - lastBackup) / (1000 * 60 * 60 * 24));
-      
+
       if (daysSinceLastBackup < 28) {
         // Find the next backup date (lastBackup + 1 month)
         const nextBackupDate = new Date(lastBackup);
         nextBackupDate.setMonth(nextBackupDate.getMonth() + 1);
         // Set the correct time
         nextBackupDate.setHours(hours, minutes, 0, 0);
-        
+
         // If this date is in the future, use it
         if (nextBackupDate > now) {
           return nextBackupDate;
@@ -121,7 +123,7 @@ function calculateNextBackupTime(settings) {
       }
     }
   }
-  
+
   return scheduledTime;
 }
 
@@ -129,18 +131,18 @@ function calculateNextBackupTime(settings) {
 async function performAutomaticBackup() {
   try {
     console.log('Starting automatic backup process...');
-    
+
     // Load settings
     const settings = await loadAutoBackupSettings();
-    
+
     if (!settings.enabled || !settings.path) {
       console.log('Auto backup is disabled or path not set. Skipping automatic backup.');
       return { success: false, message: 'Auto backup is disabled or path not set' };
     }
-    
+
     const fs = require('fs');
     const path = require('path');
-    
+
     // Create the backup path if it doesn't exist
     let filePath = settings.path;
     try {
@@ -164,7 +166,7 @@ async function performAutomaticBackup() {
         }
       }
     }
-    
+
     // Get all data from tables
     const members = await db.all('SELECT * FROM members');
     const cashBook = await db.all('SELECT * FROM cash_book');
@@ -174,7 +176,7 @@ async function performAutomaticBackup() {
     const transactions = await db.all('SELECT * FROM transactions');
     const settingsData = await db.all('SELECT * FROM settings');
     const meetings = await db.all('SELECT * FROM meetings');
-    
+
     const data = {
       members,
       cashBook,
@@ -186,20 +188,20 @@ async function performAutomaticBackup() {
       meetings,
       backupDate: new Date().toISOString()
     };
-    
+
     // Write to file
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-    
+
     // Update last backup time in settings
-    await db.run('INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)', 
-                ['last_auto_backup', new Date().toISOString()]);
-    
+    await db.run('INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)',
+      ['last_auto_backup', new Date().toISOString()]);
+
     // Log success
     console.log(`Automatic backup completed successfully at ${filePath}`);
-    
+
     // Schedule next backup
     scheduleNextBackup();
-    
+
     return { success: true, message: 'Automatic backup created successfully', path: filePath };
   } catch (error) {
     console.error('Automatic backup error:', error);
@@ -215,32 +217,32 @@ async function scheduleNextBackup() {
       clearTimeout(backupScheduler);
       backupScheduler = null;
     }
-    
+
     // Load settings
     const settings = await loadAutoBackupSettings();
-    
+
     if (!settings.enabled || !settings.path) {
       console.log('Auto backup is disabled or path not set. No backup scheduled.');
       nextScheduledBackup = null;
       return;
     }
-    
+
     // Calculate next backup time
     const nextBackupTime = calculateNextBackupTime(settings);
-    
+
     if (!nextBackupTime) {
       console.log('Could not determine next backup time. No backup scheduled.');
       nextScheduledBackup = null;
       return;
     }
-    
+
     // Calculate milliseconds until next backup
     const now = new Date();
     const delay = nextBackupTime - now;
-    
+
     // Log next backup time
     console.log(`Next automatic backup scheduled for: ${nextBackupTime.toLocaleString()}`);
-    
+
     // Schedule the backup
     backupScheduler = setTimeout(performAutomaticBackup, delay);
     nextScheduledBackup = nextBackupTime;
@@ -253,11 +255,11 @@ async function scheduleNextBackup() {
 app.on('ready', async () => {
   // Disable Chrome DevTools Autofill errors
   app.commandLine.appendSwitch('disable-features', 'BlockThirdPartyCookies,SpareRendererForSitePerProcess');
-  
+
   try {
     await setupDatabase();
     createWindow();
-    
+
     // Initialize automatic backup scheduler
     try {
       await scheduleNextBackup();
@@ -290,12 +292,12 @@ ipcMain.handle('get-members', async () => {
 ipcMain.handle('get-member', async (event, memberId) => {
   // First try to find by numeric ID
   let member = await db.get('SELECT * FROM members WHERE id = ?', memberId);
-  
+
   // If not found and memberId is a string, try finding by member_id
   if (!member && typeof memberId === 'string') {
     member = await db.get('SELECT * FROM members WHERE member_id = ?', memberId);
   }
-  
+
   return member;
 });
 
@@ -307,7 +309,7 @@ ipcMain.handle('add-member', async (event, member) => {
     // Use the provided member_id
     const result = await db.run(
       'INSERT INTO members (member_id, name, address, phone, joinDate, status) VALUES (?, ?, ?, ?, ?, ?)',
-      memberData.member_id, memberData.name, memberData.address, memberData.phone, 
+      memberData.member_id, memberData.name, memberData.address, memberData.phone,
       memberData.joinDate, memberData.status || 'active'
     );
     return { id: result.lastID, ...memberData };
@@ -315,26 +317,46 @@ ipcMain.handle('add-member', async (event, member) => {
     // Let the database generate an ID first, then we'll update with formatted member_id
     const result = await db.run(
       'INSERT INTO members (name, address, phone, joinDate, status) VALUES (?, ?, ?, ?, ?)',
-      memberData.name, memberData.address, memberData.phone, 
+      memberData.name, memberData.address, memberData.phone,
       memberData.joinDate, memberData.status || 'active'
     );
-    
+
     const newId = result.lastID;
     const generatedMemberId = `M${String(newId).padStart(4, '0')}`;
-    
+
     await db.run('UPDATE members SET member_id = ? WHERE id = ?', generatedMemberId, newId);
     memberData.member_id = generatedMemberId;
-    
+
     return { id: newId, ...memberData };
   }
 });
 
+// ipcMain.handle('update-member', async (event, id, member) => {
+//   await db.run(
+//     'UPDATE members SET member_id = ?, name = ?, address = ?, phone = ?, joinDate = ?, status = ? WHERE id = ?',
+//     member.member_id, member.name, member.address, member.phone, member.joinDate, member.status || 'active', id
+//   );
+//   return { id, ...member };
+// });
+
+// Add this BEFORE creating your BrowserWindow
+console.log('Registering IPC handlers...'); // Debug log
 ipcMain.handle('update-member', async (event, id, member) => {
-  await db.run(
-    'UPDATE members SET member_id = ?, name = ?, address = ?, phone = ?, joinDate = ?, status = ? WHERE id = ?',
-    member.member_id, member.name, member.address, member.phone, member.joinDate, member.status || 'active', id
-  );
-  return { id, ...member };
+  console.log('update-member handler called with:', { id, member }); // Debug log
+  try {
+    const result = await db.run(
+      'UPDATE members SET member_id = ?, name = ?, address = ?, phone = ?, joinDate = ?, status = ? WHERE id = ?',
+      member.member_id, member.name, member.address, member.phone, member.joinDate, member.status || 'active', id
+    );
+    if (result.changes > 0) {
+      return { success: true, id, ...member };
+    } else {
+      return { success: false, message: 'Member not found or no changes made.' };
+    }
+  } catch (error) {
+    console.error('Error in update-member handler:', error);
+    return { success: false, message: error.message };
+  }
 });
 
 ipcMain.handle('delete-member', async (event, id) => {
@@ -347,7 +369,7 @@ ipcMain.handle('get-member-transactions', async (event, memberId) => {
   const cashEntries = await db.all('SELECT id, date, description, amount, "cash" as type FROM cashbook WHERE memberId = ?', memberId);
   const loanEntries = await db.all('SELECT id, date, amount as amount, "loan" as type FROM loans WHERE memberId = ?', memberId);
   const dividendEntries = await db.all('SELECT id, date, amount as amount, "dividend" as type FROM dividend_payments WHERE memberId = ?', memberId);
-  
+
   // Fetch loan payments
   const loanPayments = await db.all(`
     SELECT p.id, p.date, p.note as description, p.amount, "loan_payment" as type 
@@ -355,7 +377,7 @@ ipcMain.handle('get-member-transactions', async (event, memberId) => {
     JOIN loans l ON p.loanId = l.id
     WHERE l.memberId = ?
   `, memberId);
-  
+
   // Combine all transactions and sort by date
   const allTransactions = [...cashEntries, ...loanEntries, ...dividendEntries, ...loanPayments];
   return allTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -402,31 +424,31 @@ ipcMain.handle('add-loan', async (event, loan) => {
 ipcMain.handle('update-loan-payment', async (event, payment) => {
   // Get current loan details
   const loan = await db.get('SELECT * FROM loan_book WHERE id = ?', payment.loan_id);
-  
+
   // Calculate interest based on days since last payment
   const lastPaidDate = new Date(loan.last_interest_paid_date);
   const paymentDate = new Date(payment.date);
   const daysDiff = Math.floor((paymentDate - lastPaidDate) / (1000 * 60 * 60 * 24));
-  
+
   const interestRate = loan.interest_rate / 100;
   const dailyInterest = interestRate / 365;
   const interestAmount = loan.total * dailyInterest * daysDiff;
-  
+
   // Update loan record
   const newPremium = loan.loan_premium + payment.premium_amount;
   const newInterest = loan.loan_interest + payment.interest_amount;
   const newAmountPaid = loan.amount_paid + payment.premium_amount + payment.interest_amount;
   const newTotal = loan.amount_taken - newPremium;
-  
+
   await db.run(
     `UPDATE loan_book SET 
      amount_paid = ?, loan_premium = ?, loan_interest = ?, total = ?, 
      last_interest_paid_date = ?, is_active = ?
      WHERE id = ?`,
-    newAmountPaid, newPremium, newInterest, newTotal, 
+    newAmountPaid, newPremium, newInterest, newTotal,
     payment.date, newTotal > 0 ? 1 : 0, payment.loan_id
   );
-  
+
   return { success: true };
 });
 
@@ -439,7 +461,7 @@ ipcMain.handle('add-dividend-entry', async (event, entry) => {
     `INSERT INTO dividend_book 
      (member_id, date, description, share_amount, annual_interest, attending_bonus, deductibles, total, quarter, year) 
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    entry.member_id, entry.date, entry.description, entry.share_amount, entry.annual_interest, 
+    entry.member_id, entry.date, entry.description, entry.share_amount, entry.annual_interest,
     entry.attending_bonus, entry.deductibles, entry.total, entry.quarter, entry.year
   );
   return { id: result.lastID, ...entry };
@@ -461,7 +483,7 @@ ipcMain.handle('add-organization-account', async (event, account) => {
     `INSERT INTO organization_accounts 
      (account_name, bank_name, account_type, balance, interest_rate, start_date, maturity_date) 
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    account.account_name, account.bank_name, account.account_type, 
+    account.account_name, account.bank_name, account.account_type,
     account.balance, account.interest_rate, account.start_date, account.maturity_date
   );
   return { id: result.lastID, ...account };
@@ -483,13 +505,13 @@ ipcMain.handle('add-bank-transaction', async (event, transaction) => {
     'INSERT INTO transactions (date, description, amount, transaction_type, account_id) VALUES (?, ?, ?, ?, ?)',
     transaction.date, transaction.description, transaction.amount, transaction.transaction_type, transaction.account_id
   );
-  
+
   // Update account balance
   await db.run(
     'UPDATE organization_accounts SET balance = balance + ? WHERE id = ?',
     transaction.amount, transaction.account_id
   );
-  
+
   return { id: result.lastID, ...transaction };
 });
 
@@ -499,7 +521,7 @@ ipcMain.handle('get-dashboard-data', async () => {
   const totalActiveLoans = await db.get('SELECT COUNT(*) as count FROM loan_book WHERE is_active = 1');
   const totalLoanAmount = await db.get('SELECT SUM(total) as total FROM loan_book WHERE is_active = 1');
   const totalBankBalance = await db.get('SELECT SUM(balance) as total FROM organization_accounts');
-  
+
   // Generate mock data for charts until we have real data
   const recentTransactions = [
     { month: 'Jan', income: 50000, expense: 30000 },
@@ -509,14 +531,14 @@ ipcMain.handle('get-dashboard-data', async () => {
     { month: 'May', income: 65000, expense: 38000 },
     { month: 'Jun', income: 80000, expense: 45000 }
   ];
-  
+
   // Asset distribution data
   const assetDistribution = [
     { name: 'Cash In Hand', value: totalCashBook?.total || 0 },
     { name: 'Bank Deposits', value: totalBankBalance?.total || 0 },
     { name: 'Outstanding Loans', value: totalLoanAmount?.total || 0 }
   ];
-  
+
   return {
     totalMembers: totalMembers.count,
     cashBook: {
@@ -546,10 +568,10 @@ ipcMain.handle('update-setting', async (event, setting) => {
         value TEXT
       )
     `);
-    
+
     // Try INSERT OR REPLACE instead of UPDATE to handle both new and existing settings
-    await db.run('INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)', 
-                [setting.name, setting.value]);
+    await db.run('INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)',
+      [setting.name, setting.value]);
     return { success: true };
   } catch (error) {
     console.error('Error updating setting:', error);
@@ -610,36 +632,36 @@ ipcMain.handle('calculate-quarterly-profit', async (event, quarter, year) => {
     'SELECT SUM(loan_interest) as total FROM loan_book WHERE strftime("%m", date) >= ? AND strftime("%m", date) <= ? AND strftime("%Y", date) = ?',
     quarter * 3 - 2, quarter * 3, year
   );
-  
+
   // Get other income and expenses
   // This is simplified - in a real app you'd have more detailed calculations
   const fixedDepositInterest = await db.get(
     'SELECT SUM(amount) as total FROM transactions WHERE transaction_type = "fixed_deposit_interest" AND strftime("%m", date) >= ? AND strftime("%m", date) <= ? AND strftime("%Y", date) = ?',
     quarter * 3 - 2, quarter * 3, year
   );
-  
+
   const savingsInterest = await db.get(
     'SELECT SUM(amount) as total FROM transactions WHERE transaction_type = "savings_interest" AND strftime("%m", date) >= ? AND strftime("%m", date) <= ? AND strftime("%Y", date) = ?',
     quarter * 3 - 2, quarter * 3, year
   );
-  
+
   const expenses = await db.get(
     'SELECT SUM(amount) as total FROM transactions WHERE transaction_type = "expense" AND strftime("%m", date) >= ? AND strftime("%m", date) <= ? AND strftime("%Y", date) = ?',
     quarter * 3 - 2, quarter * 3, year
   );
-  
+
   const otherIncome = await db.get(
     'SELECT SUM(amount) as total FROM transactions WHERE transaction_type = "other_income" AND strftime("%m", date) >= ? AND strftime("%m", date) <= ? AND strftime("%Y", date) = ?',
     quarter * 3 - 2, quarter * 3, year
   );
-  
+
   // Calculate net profit
-  const netProfit = (loanInterestQuery.total || 0) + 
-                    (fixedDepositInterest.total || 0) + 
-                    (savingsInterest.total || 0) + 
-                    (otherIncome.total || 0) - 
-                    (expenses.total || 0);
-  
+  const netProfit = (loanInterestQuery.total || 0) +
+    (fixedDepositInterest.total || 0) +
+    (savingsInterest.total || 0) +
+    (otherIncome.total || 0) -
+    (expenses.total || 0);
+
   return {
     loanInterest: loanInterestQuery.total || 0,
     fixedDepositInterest: fixedDepositInterest.total || 0,
@@ -652,7 +674,7 @@ ipcMain.handle('calculate-quarterly-profit', async (event, quarter, year) => {
 
 ipcMain.handle('get-quarterly-profit', async (event, params) => {
   const { startDate, endDate } = params;
-  
+
   // Get loan interest for the period
   const loanInterest = await db.get(
     `SELECT SUM(loan_interest) as total 
@@ -660,7 +682,7 @@ ipcMain.handle('get-quarterly-profit', async (event, params) => {
      WHERE last_interest_paid_date >= ? AND last_interest_paid_date <= ?`,
     startDate, endDate
   );
-  
+
   // Get penalties
   const penalties = await db.get(
     `SELECT SUM(amount) as total 
@@ -668,7 +690,7 @@ ipcMain.handle('get-quarterly-profit', async (event, params) => {
      WHERE transaction_type = 'penalty' AND date >= ? AND date <= ?`,
     startDate, endDate
   );
-  
+
   // Get service fees
   const serviceFees = await db.get(
     `SELECT SUM(amount) as total 
@@ -676,7 +698,7 @@ ipcMain.handle('get-quarterly-profit', async (event, params) => {
      WHERE transaction_type = 'service_fee' AND date >= ? AND date <= ?`,
     startDate, endDate
   );
-  
+
   // Get other income
   const otherIncome = await db.get(
     `SELECT SUM(amount) as total 
@@ -684,7 +706,7 @@ ipcMain.handle('get-quarterly-profit', async (event, params) => {
      WHERE transaction_type = 'other_income' AND date >= ? AND date <= ?`,
     startDate, endDate
   );
-  
+
   // Get operating costs
   const operatingCosts = await db.get(
     `SELECT SUM(amount) as total 
@@ -692,7 +714,7 @@ ipcMain.handle('get-quarterly-profit', async (event, params) => {
      WHERE transaction_type = 'operating_cost' AND date >= ? AND date <= ?`,
     startDate, endDate
   );
-  
+
   // Get bank fees
   const bankFees = await db.get(
     `SELECT SUM(amount) as total 
@@ -700,7 +722,7 @@ ipcMain.handle('get-quarterly-profit', async (event, params) => {
      WHERE transaction_type = 'bank_fee' AND date >= ? AND date <= ?`,
     startDate, endDate
   );
-  
+
   // Get other expenses
   const otherExpenses = await db.get(
     `SELECT SUM(amount) as total 
@@ -708,19 +730,19 @@ ipcMain.handle('get-quarterly-profit', async (event, params) => {
      WHERE transaction_type = 'other_expense' AND date >= ? AND date <= ?`,
     startDate, endDate
   );
-  
+
   // Calculate totals
-  const totalIncome = (loanInterest.total || 0) + 
-                      (penalties.total || 0) + 
-                      (serviceFees.total || 0) + 
-                      (otherIncome.total || 0);
-                      
-  const totalExpenses = (operatingCosts.total || 0) + 
-                       (bankFees.total || 0) + 
-                       (otherExpenses.total || 0);
-                       
+  const totalIncome = (loanInterest.total || 0) +
+    (penalties.total || 0) +
+    (serviceFees.total || 0) +
+    (otherIncome.total || 0);
+
+  const totalExpenses = (operatingCosts.total || 0) +
+    (bankFees.total || 0) +
+    (otherExpenses.total || 0);
+
   const profit = totalIncome - totalExpenses;
-  
+
   return {
     income: {
       loanInterest: loanInterest.total || 0,
@@ -782,7 +804,7 @@ ipcMain.handle('verify-user', async (event, credentials) => {
     'SELECT id, username, role FROM users WHERE username = ? AND password = ?',
     credentials.username, credentials.password
   );
-  
+
   if (user) {
     // Update last login time
     await db.run(
@@ -800,17 +822,17 @@ ipcMain.handle('changePassword', async (event, userId, oldPassword, newPassword)
     'SELECT id, username FROM users WHERE id = ? AND password = ?',
     userId, oldPassword
   );
-  
+
   if (!user) {
     return { success: false, message: 'Current password is incorrect' };
   }
-  
+
   // Update to the new password
   await db.run(
     'UPDATE users SET password = ? WHERE id = ?',
     newPassword, userId
   );
-  
+
   return { success: true, message: 'Password changed successfully' };
 });
 
@@ -819,7 +841,7 @@ ipcMain.handle('changePassword', async (event, userId, oldPassword, newPassword)
 ipcMain.handle('backup-data', async (event, filePath) => {
   const fs = require('fs');
   const path = require('path');
-  
+
   try {
     // Get database schema information
     const getTableSchema = async (tableName) => {
@@ -851,21 +873,21 @@ ipcMain.handle('backup-data', async (event, filePath) => {
       try {
         const schema = await getTableSchema(tableName);
         const tableData = await db.all(`SELECT * FROM ${tableName}`);
-        
+
         data.schemas[tableName] = schema;
         data.data[tableName] = tableData;
-        
+
         console.log(`Backed up table: ${tableName} (${tableData.length} records)`);
       } catch (error) {
         console.warn(`Failed to backup table ${tableName}:`, error.message);
       }
     }
-    
+
     // Write to file
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-    
-    return { 
-      success: true, 
+
+    return {
+      success: true,
       message: `Backup created successfully with ${tableNames.length} tables`,
       tablesBackedUp: tableNames.length
     };
@@ -878,21 +900,21 @@ ipcMain.handle('backup-data', async (event, filePath) => {
 // Enhanced restore function with schema validation and dynamic mapping
 ipcMain.handle('restore-data', async (event, filePath) => {
   const fs = require('fs');
-  
+
   try {
     // Read backup file
     const backupContent = fs.readFileSync(filePath, 'utf8');
     const backup = JSON.parse(backupContent);
-    
+
     // Validate backup format
     if (!backup.metadata && !backup.members) {
       throw new Error('Invalid backup file format. This file may be corrupted or from an incompatible version.');
     }
-    
+
     // Handle legacy backup format (version 1.0)
     let isLegacyFormat = !backup.metadata;
     let backupData, backupSchemas;
-    
+
     if (isLegacyFormat) {
       console.log('Detected legacy backup format, converting...');
       backupData = {
@@ -910,7 +932,7 @@ ipcMain.handle('restore-data', async (event, filePath) => {
       backupData = backup.data;
       backupSchemas = backup.schemas;
     }
-    
+
     // Get current database schema
     const getCurrentTableSchema = async (tableName) => {
       try {
@@ -920,37 +942,37 @@ ipcMain.handle('restore-data', async (event, filePath) => {
         return null;
       }
     };
-    
+
     // Get current tables
     const currentTables = await db.all("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
     const currentTableNames = currentTables.map(t => t.name);
-    
+
     // Begin transaction
     await db.run('BEGIN TRANSACTION');
-    
+
     let restoredTables = 0;
     let skippedTables = [];
     let warnings = [];
-    
+
     // Process each table in backup
     for (const [tableName, tableData] of Object.entries(backupData)) {
       if (!Array.isArray(tableData) || tableData.length === 0) {
         console.log(`Skipping empty table: ${tableName}`);
         continue;
       }
-      
+
       // Check if table exists in current database
       if (!currentTableNames.includes(tableName)) {
         console.warn(`Table ${tableName} does not exist in current database, skipping...`);
         skippedTables.push(tableName);
         continue;
       }
-      
+
       try {
         // Get current table schema
         const currentSchema = await getCurrentTableSchema(tableName);
         const currentColumns = currentSchema.map(col => col.name);
-        
+
         // Get backup table schema (if available)
         let backupColumns;
         if (backupSchemas && backupSchemas[tableName]) {
@@ -959,34 +981,34 @@ ipcMain.handle('restore-data', async (event, filePath) => {
           // Infer from first record
           backupColumns = tableData.length > 0 ? Object.keys(tableData[0]) : [];
         }
-        
+
         // Find common columns
         const commonColumns = currentColumns.filter(col => backupColumns.includes(col));
-        
+
         if (commonColumns.length === 0) {
           console.warn(`No matching columns found for table ${tableName}, skipping...`);
           skippedTables.push(tableName);
           continue;
         }
-        
+
         // Check for missing columns
         const missingInCurrent = backupColumns.filter(col => !currentColumns.includes(col));
         const missingInBackup = currentColumns.filter(col => !backupColumns.includes(col));
-        
+
         if (missingInCurrent.length > 0) {
           warnings.push(`Table ${tableName}: Backup contains columns not in current schema: ${missingInCurrent.join(', ')}`);
         }
         if (missingInBackup.length > 0) {
           warnings.push(`Table ${tableName}: Current schema has columns not in backup: ${missingInBackup.join(', ')}`);
         }
-        
+
         // Clear existing data
         await db.run(`DELETE FROM ${tableName}`);
-        
+
         // Prepare insert statement with common columns
         const placeholders = commonColumns.map(() => '?').join(', ');
         const insertSQL = `INSERT INTO ${tableName} (${commonColumns.join(', ')}) VALUES (${placeholders})`;
-        
+
         // Insert data
         let recordsInserted = 0;
         for (const record of tableData) {
@@ -999,19 +1021,19 @@ ipcMain.handle('restore-data', async (event, filePath) => {
             // Continue with next record instead of failing completely
           }
         }
-        
+
         console.log(`Restored table ${tableName}: ${recordsInserted}/${tableData.length} records`);
         restoredTables++;
-        
+
       } catch (tableError) {
         console.error(`Error restoring table ${tableName}:`, tableError.message);
         skippedTables.push(tableName);
       }
     }
-    
+
     // Commit transaction
     await db.run('COMMIT');
-    
+
     // Prepare result message
     let message = `Data restored successfully. ${restoredTables} tables restored.`;
     if (skippedTables.length > 0) {
@@ -1020,16 +1042,16 @@ ipcMain.handle('restore-data', async (event, filePath) => {
     if (warnings.length > 0) {
       message += ` Warnings: ${warnings.length} schema differences detected.`;
     }
-    
-    return { 
-      success: true, 
+
+    return {
+      success: true,
       message,
       restoredTables,
       skippedTables,
       warnings,
       isLegacyFormat
     };
-    
+
   } catch (error) {
     // Rollback in case of error
     try {
@@ -1037,9 +1059,9 @@ ipcMain.handle('restore-data', async (event, filePath) => {
     } catch (rollbackError) {
       console.error('Rollback failed:', rollbackError.message);
     }
-    
+
     console.error('Restore error:', error);
-    
+
     // Provide more specific error messages
     let errorMessage = 'Restore failed: ';
     if (error.message.includes('JSON')) {
@@ -1049,7 +1071,7 @@ ipcMain.handle('restore-data', async (event, filePath) => {
     } else {
       errorMessage += error.message;
     }
-    
+
     return { success: false, message: errorMessage, error: error.message };
   }
 });
@@ -1060,26 +1082,26 @@ ipcMain.handle('generate-report', async (event, reportType, params) => {
     const fs = require('fs');
     const path = require('path');
     const { dialog } = require('electron');
-    
+
     console.log(`Generating ${reportType} report with params:`, params);
-    
+
     // Show save dialog to get output location
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: 'Save Report',
       defaultPath: `${reportType}-report.${params.format === 'pdf' ? 'pdf' : 'xlsx'}`,
-      filters: [{ 
-        name: params.format === 'pdf' ? 'PDF Documents' : 'Excel Spreadsheets', 
-        extensions: [params.format === 'pdf' ? 'pdf' : 'xlsx'] 
+      filters: [{
+        name: params.format === 'pdf' ? 'PDF Documents' : 'Excel Spreadsheets',
+        extensions: [params.format === 'pdf' ? 'pdf' : 'xlsx']
       }]
     });
-    
+
     if (canceled || !filePath) {
       return { success: false, message: 'Report generation cancelled' };
     }
-    
+
     // Generate report data based on type
     let reportData = { reportType, generatedAt: new Date().toISOString() };
-    
+
     switch (reportType) {
       case 'member-statement':
         // Get member data
@@ -1087,71 +1109,71 @@ ipcMain.handle('generate-report', async (event, reportType, params) => {
         if (!member) {
           return { success: false, message: 'Member not found' };
         }
-        
+
         // Get member transactions
         const transactions = await db.all(
           'SELECT * FROM transactions WHERE member_id = ? AND date BETWEEN ? AND ? ORDER BY date DESC',
           params.memberId, params.startDate, params.endDate
         );
-        
+
         reportData.member = member;
         reportData.transactions = transactions || [];
         reportData.title = `Member Statement - ${member.name}`;
         break;
-        
+
       case 'cash-flow':
         // Get income and expense transactions
         const income = await db.all(
           "SELECT type, SUM(amount) as total FROM transactions WHERE type = 'income' AND date BETWEEN ? AND ? GROUP BY category",
           params.startDate, params.endDate
         );
-        
+
         const expenses = await db.all(
           "SELECT type, SUM(amount) as total FROM transactions WHERE type = 'expense' AND date BETWEEN ? AND ? GROUP BY category",
           params.startDate, params.endDate
         );
-        
+
         reportData.income = income || [];
         reportData.expenses = expenses || [];
         reportData.title = 'Cash Flow Report';
         break;
-        
+
       case 'loan-summary':
         // Get active loans
         const loans = await db.all('SELECT * FROM loans WHERE status = "active"');
-        
+
         // Get loan payments in the period
         const payments = await db.all(
           'SELECT * FROM loan_payments WHERE payment_date BETWEEN ? AND ?',
           params.startDate, params.endDate
         );
-        
+
         reportData.loans = loans || [];
         reportData.payments = payments || [];
         reportData.title = 'Loan Summary Report';
         break;
-        
+
       case 'quarterly-profit':
         // Get profit components
         const interest = await db.get(
           "SELECT SUM(amount) as total FROM transactions WHERE type = 'income' AND category = 'interest' AND date BETWEEN ? AND ?",
           params.startDate, params.endDate
         );
-        
+
         const otherIncome = await db.get(
           "SELECT SUM(amount) as total FROM transactions WHERE type = 'income' AND category != 'interest' AND date BETWEEN ? AND ?",
           params.startDate, params.endDate
         );
-        
+
         const expensesTotal = await db.get(
           "SELECT SUM(amount) as total FROM transactions WHERE type = 'expense' AND date BETWEEN ? AND ?",
           params.startDate, params.endDate
         );
-        
+
         const totalIncome = (interest?.total || 0) + (otherIncome?.total || 0);
         const totalExpenses = expensesTotal?.total || 0;
         const netProfit = totalIncome - totalExpenses;
-        
+
         reportData.profit = {
           interest: interest?.total || 0,
           otherIncome: otherIncome?.total || 0,
@@ -1161,7 +1183,7 @@ ipcMain.handle('generate-report', async (event, reportType, params) => {
         };
         reportData.title = 'Quarterly Profit Report';
         break;
-        
+
       case 'balance-sheet':
         // Get assets
         const assets = await db.get(
@@ -1169,17 +1191,17 @@ ipcMain.handle('generate-report', async (event, reportType, params) => {
           "SUM(CASE WHEN type = 'bank' THEN balance ELSE 0 END) as bank " +
           "FROM accounts"
         );
-        
+
         // Get liabilities
         const liabilities = await db.get(
           "SELECT SUM(amount) as total FROM liabilities"
         );
-        
+
         // Get equity
         const equity = await db.get(
           "SELECT SUM(amount) as total FROM equity"
         );
-        
+
         reportData.balanceSheet = {
           assets: {
             loans: assets?.loans || 0,
@@ -1191,25 +1213,25 @@ ipcMain.handle('generate-report', async (event, reportType, params) => {
         };
         reportData.title = 'Balance Sheet Report';
         break;
-        
+
       default:
         return { success: false, message: 'Invalid report type' };
     }
-    
+
     // Add period to report data
     reportData.period = {
       startDate: params.startDate,
       endDate: params.endDate
     };
-    
+
     // For demo purposes, just write the JSON to a file
     // In a real implementation, you would convert this to PDF or Excel
     fs.writeFileSync(filePath, JSON.stringify(reportData, null, 2));
-    
+
     console.log(`Report saved to ${filePath}`);
-    
-    return { 
-      success: true, 
+
+    return {
+      success: true,
       message: `Report generated successfully and saved to ${filePath}`,
       filePath
     };
@@ -1227,22 +1249,22 @@ ipcMain.handle('calculate-org-assets', async (event) => {
       const cashContributions = await db.get(
         `SELECT COALESCE(SUM(amount), 0) as total FROM cash_book`
       );
-      
+
       // Calculate total bank balances
       const bankBalances = await db.get(
         `SELECT COALESCE(SUM(balance), 0) as total FROM organization_accounts`
       );
-      
+
       // Calculate total outstanding loans
       const outstandingLoans = await db.get(
         `SELECT COALESCE(SUM(total), 0) as total FROM loan_book WHERE is_active = 1`
       );
-      
+
       // Calculate total assets
-      const totalAssets = (cashContributions.total || 0) + 
-                          (bankBalances.total || 0) + 
-                          (outstandingLoans.total || 0);
-      
+      const totalAssets = (cashContributions.total || 0) +
+        (bankBalances.total || 0) +
+        (outstandingLoans.total || 0);
+
       resolve({
         cashContributions: cashContributions.total || 0,
         bankBalances: bankBalances.total || 0,
@@ -1262,41 +1284,41 @@ ipcMain.handle('calculate-proportional-dividends', async (event, { quarterlyProf
     try {
       // Calculate the dividend pool from quarterly profit
       const dividendPool = quarterlyProfit * (dividendRate / 100);
-      
+
       // Get all active members
       const activeMembers = await db.all('SELECT * FROM members WHERE status = "active"');
-      
+
       // Calculate total organization assets for the specified quarter
       // We need to use the organization's total assets at the end of the quarter
       // Format date as YYYY-MM-DD for SQLite
       const quarterEndMonth = quarter * 3;
-      const quarterEndDate = `${year}-${String(quarterEndMonth).padStart(2, '0')}-${['31', '30', '30', '31'][quarter-1]}`;
-      
+      const quarterEndDate = `${year}-${String(quarterEndMonth).padStart(2, '0')}-${['31', '30', '30', '31'][quarter - 1]}`;
+
       console.log(`Calculating assets as of: ${quarterEndDate}`);
-      
+
       // Get cash contributions up to the end of the quarter
       const cashContributions = await db.get(
         `SELECT COALESCE(SUM(amount), 0) as total FROM cash_book 
          WHERE date <= ?`,
         [quarterEndDate]
       );
-      
+
       const bankBalances = await db.get(
         `SELECT COALESCE(SUM(balance), 0) as total FROM organization_accounts 
          WHERE created_date <= ?`,
         [quarterEndDate]
       );
-      
+
       const outstandingLoans = await db.get(
         `SELECT COALESCE(SUM(total), 0) as total FROM loan_book 
          WHERE date <= ? AND (closed_date IS NULL OR closed_date > ?)`,
         [quarterEndDate, quarterEndDate]
       );
-      
-      const totalOrgAssets = (cashContributions.total || 0) + 
-                           (bankBalances.total || 0) + 
-                           (outstandingLoans.total || 0);
-      
+
+      const totalOrgAssets = (cashContributions.total || 0) +
+        (bankBalances.total || 0) +
+        (outstandingLoans.total || 0);
+
       const orgAssets = {
         cashContributions: cashContributions.total || 0,
         bankBalances: bankBalances.total || 0,
@@ -1304,7 +1326,7 @@ ipcMain.handle('calculate-proportional-dividends', async (event, { quarterlyProf
         totalAssets: totalOrgAssets,
         asOfDate: quarterEndDate
       };
-      
+
       // Calculate dividend for each member based on their proportion of the total assets
       const dividends = await Promise.all(activeMembers.map(async (member) => {
         try {
@@ -1315,24 +1337,24 @@ ipcMain.handle('calculate-proportional-dividends', async (event, { quarterlyProf
              WHERE member_id = ? AND date <= ?`,
             [member.id, quarterEndDate]
           );
-          
+
           const dividendResult = await db.get(
             `SELECT COALESCE(SUM(total), 0) as dividendTotal 
              FROM dividend_book 
              WHERE member_id = ? AND date <= ?`,
             [member.id, quarterEndDate]
           );
-          
+
           const cashTotal = cashResult ? cashResult.cashTotal : 0;
           const dividendTotal = dividendResult ? dividendResult.dividendTotal : 0;
           const memberAssets = cashTotal + dividendTotal;
-          
+
           // Calculate proportion
           const proportion = orgAssets.totalAssets > 0 ? memberAssets / orgAssets.totalAssets : 0;
-          
+
           // Calculate dividend amount - this is one-fourth of the yearly profit times the proportion
           const dividendAmount = proportion * dividendPool;
-          
+
           return {
             memberId: member.id,
             memberName: member.name,
@@ -1356,10 +1378,10 @@ ipcMain.handle('calculate-proportional-dividends', async (event, { quarterlyProf
           };
         }
       }));
-      
+
       // Total calculated to verify
       const totalCalculatedDividend = dividends.reduce((sum, div) => sum + (div.dividendAmount || 0), 0);
-      
+
       resolve({
         quarterlyProfit,
         dividendRate,
@@ -1395,7 +1417,7 @@ ipcMain.handle('delete-loan-type', async (event, id) => {
   if (loans[0].count > 0) {
     throw new Error('Cannot delete loan type that is in use');
   }
-  
+
   await db.run('DELETE FROM loan_types WHERE id = ?', id);
   return { success: true };
 });
@@ -1406,7 +1428,7 @@ ipcMain.handle('calculate-quarterly-dividends-by-year', async (event, { year, di
     try {
       // Get all active members
       const activeMembers = await db.all('SELECT * FROM members WHERE status = "active"');
-      
+
       // Get quarterly profits for the year
       // In a real-world scenario, you would fetch this from your financial records
       // For demonstration, we'll simulate with available data or create estimates
@@ -1418,46 +1440,46 @@ ipcMain.handle('calculate-quarterly-dividends-by-year', async (event, { year, di
            WHERE year = ? AND quarter = ?`,
           [year, quarter]
         );
-        
+
         // Return found profit or estimate
         return {
           quarter,
           profit: profit?.profit || 50000, // Default value if no data found
         };
       }));
-      
+
       // Calculate dividends for each quarter
       const quarterlyDividends = await Promise.all(quarterlyProfits.map(async ({ quarter, profit }) => {
         // Calculate dividend pool
         const dividendPool = profit * (dividendRate / 100);
-        
+
         // End date for this quarter
         const quarterEndMonth = quarter * 3;
-        const quarterEndDate = `${year}-${String(quarterEndMonth).padStart(2, '0')}-${['31', '30', '30', '31'][quarter-1]}`;
-        
+        const quarterEndDate = `${year}-${String(quarterEndMonth).padStart(2, '0')}-${['31', '30', '30', '31'][quarter - 1]}`;
+
         // Calculate organization's total assets at the end of this quarter
         const cashContributions = await db.get(
           `SELECT COALESCE(SUM(amount), 0) as total FROM cash_book 
            WHERE date <= ?`,
           [quarterEndDate]
         );
-        
+
         const bankBalances = await db.get(
           `SELECT COALESCE(SUM(balance), 0) as total FROM organization_accounts 
            WHERE created_date <= ?`,
           [quarterEndDate]
         );
-        
+
         const outstandingLoans = await db.get(
           `SELECT COALESCE(SUM(total), 0) as total FROM loan_book 
            WHERE date <= ? AND (closed_date IS NULL OR closed_date > ?)`,
           [quarterEndDate, quarterEndDate]
         );
-        
-        const totalOrgAssets = (cashContributions.total || 0) + 
-                             (bankBalances.total || 0) + 
-                             (outstandingLoans.total || 0);
-        
+
+        const totalOrgAssets = (cashContributions.total || 0) +
+          (bankBalances.total || 0) +
+          (outstandingLoans.total || 0);
+
         // Calculate each member's dividend for this quarter
         const memberDividends = await Promise.all(activeMembers.map(async (member) => {
           try {
@@ -1468,24 +1490,24 @@ ipcMain.handle('calculate-quarterly-dividends-by-year', async (event, { year, di
                WHERE member_id = ? AND date <= ?`,
               [member.id, quarterEndDate]
             );
-            
+
             const dividendResult = await db.get(
               `SELECT COALESCE(SUM(total), 0) as dividendTotal 
                FROM dividend_book 
                WHERE member_id = ? AND date <= ?`,
               [member.id, quarterEndDate]
             );
-            
+
             const cashTotal = cashResult ? cashResult.cashTotal : 0;
             const dividendTotal = dividendResult ? dividendResult.dividendTotal : 0;
             const memberAssets = cashTotal + dividendTotal;
-            
+
             // Calculate proportion
             const proportion = totalOrgAssets > 0 ? memberAssets / totalOrgAssets : 0;
-            
+
             // Calculate dividend amount
             const dividendAmount = proportion * dividendPool;
-            
+
             return {
               memberId: member.id,
               memberName: member.name,
@@ -1505,7 +1527,7 @@ ipcMain.handle('calculate-quarterly-dividends-by-year', async (event, { year, di
             };
           }
         }));
-        
+
         return {
           quarter,
           profit,
@@ -1515,7 +1537,7 @@ ipcMain.handle('calculate-quarterly-dividends-by-year', async (event, { year, di
           memberDividends
         };
       }));
-      
+
       // Now calculate the yearly totals for each member
       const yearlyDividends = activeMembers.map(member => {
         const memberQuarterlyDividends = quarterlyDividends.map(qd => {
@@ -1527,11 +1549,11 @@ ipcMain.handle('calculate-quarterly-dividends-by-year', async (event, { year, di
             memberAssets: 0
           };
         });
-        
+
         const totalYearlyDividend = memberQuarterlyDividends.reduce(
           (sum, qd) => sum + qd.dividendAmount, 0
         );
-        
+
         return {
           memberId: member.id,
           memberName: member.name,
@@ -1539,10 +1561,10 @@ ipcMain.handle('calculate-quarterly-dividends-by-year', async (event, { year, di
           totalYearlyDividend
         };
       });
-      
+
       // Sort by total yearly dividend (highest first)
       yearlyDividends.sort((a, b) => b.totalYearlyDividend - a.totalYearlyDividend);
-      
+
       resolve({
         year,
         dividendRate,
@@ -1569,7 +1591,7 @@ async function fixSettingsTable() {
     // First verify the table structure
     const tableInfo = await db.all("PRAGMA table_info(settings)");
     console.log('fixSettingsTable: PRAGMA table_info(settings) result:', JSON.stringify(tableInfo));
-    
+
     if (tableInfo.length === 0) {
       // Table doesn't exist, create it with correct structure
       console.log('fixSettingsTable: Settings table does not exist, creating it...');
@@ -1580,24 +1602,24 @@ async function fixSettingsTable() {
           value TEXT
         );
       `);
-      
+
       // Insert default SMS settings
       console.log('fixSettingsTable: Inserting default settings into new settings table.');
       await db.run("INSERT OR IGNORE INTO settings (name, value) VALUES ('sms_api_key', '')", []);
       await db.run("INSERT OR IGNORE INTO settings (name, value) VALUES ('sms_user_id', '')", []);
       await db.run("INSERT OR IGNORE INTO settings (name, value) VALUES ('sms_enabled', 'false')", []);
       await db.run("INSERT OR IGNORE INTO settings (name, value) VALUES ('sms_sender_id', 'FINANCIALORG')", []);
-      
+
       console.log('fixSettingsTable: Settings table created with defaults.');
       return true;
     }
-    
+
     const columns = tableInfo.map(col => col.name);
-    
+
     // If value column doesn't exist, we need to fix the table
     if (!columns.includes('value')) {
       console.log('fixSettingsTable: Settings table missing value column, attempting to fix structure...');
-      
+
       // Save existing settings with all their columns
       let existingSettings = [];
       try {
@@ -1609,11 +1631,11 @@ async function fixSettingsTable() {
         console.log('fixSettingsTable: Could not retrieve existing settings:', error.message);
         // Proceed even if we can't retrieve old settings
       }
-      
+
       // Execute migrations in a transaction
       console.log('fixSettingsTable: Starting transaction to fix table.');
       await db.exec('BEGIN TRANSACTION');
-      
+
       try {
         // Create a new table with correct structure
         console.log('fixSettingsTable: Creating settings_new table.');
@@ -1624,22 +1646,22 @@ async function fixSettingsTable() {
             value TEXT
           );
         `);
-        
+
         // Insert default SMS settings
         console.log('fixSettingsTable: Inserting default settings into settings_new.');
         await db.run("INSERT OR IGNORE INTO settings_new (name, value) VALUES ('sms_api_key', '')", []);
         await db.run("INSERT OR IGNORE INTO settings_new (name, value) VALUES ('sms_user_id', '')", []);
         await db.run("INSERT OR IGNORE INTO settings_new (name, value) VALUES ('sms_enabled', 'false')", []);
         await db.run("INSERT OR IGNORE INTO settings_new (name, value) VALUES ('sms_sender_id', 'FINANCIALORG')", []);
-        
+
         // Try to migrate existing settings
         if (existingSettings.length > 0) {
           console.log(`fixSettingsTable: Migrating ${existingSettings.length} settings to settings_new...`);
-          
+
           for (const setting of existingSettings) {
             const name = setting.name;
             let value = null;
-            
+
             // Check if we have direct columns for the SMS settings
             if (name === 'sms_api_key' && columns.includes('sms_api_key')) {
               value = setting['sms_api_key'];
@@ -1659,7 +1681,7 @@ async function fixSettingsTable() {
                 }
               }
             }
-            
+
             if (name && value !== null) {
               await db.run('INSERT OR REPLACE INTO settings_new (name, value) VALUES (?, ?)', [name, value]);
               console.log(`fixSettingsTable: Migrated setting ${name} -> ${value}`);
@@ -1668,13 +1690,13 @@ async function fixSettingsTable() {
             }
           }
         }
-        
+
         // Drop the old table and rename the new one
         console.log('fixSettingsTable: Dropping old settings table.');
         await db.exec(`DROP TABLE IF EXISTS settings;`);
         console.log('fixSettingsTable: Renaming settings_new to settings.');
         await db.exec(`ALTER TABLE settings_new RENAME TO settings;`);
-        
+
         // Commit transaction
         console.log('fixSettingsTable: Committing transaction.');
         await db.exec('COMMIT');
@@ -1694,7 +1716,7 @@ async function fixSettingsTable() {
     console.error('fixSettingsTable: Error accessing settings table info:', dbError);
     return false;
   }
-  
+
   // Table already has correct structure or error occurred previously
   return true;
 }
@@ -1704,7 +1726,7 @@ ipcMain.handle('get-sms-settings', async () => {
   try {
     // Check if sms_settings table exists
     const tableCheck = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='sms_settings'");
-    
+
     if (!tableCheck) {
       // Create sms_settings table if it doesn't exist
       console.log('get-sms-settings: SMS settings table does not exist. Creating it...');
@@ -1715,25 +1737,25 @@ ipcMain.handle('get-sms-settings', async () => {
           value TEXT
         )
       `);
-      
+
       // Insert default settings
       await db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_api_key', '')", []);
       await db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_user_id', '')", []);
       await db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_enabled', 'false')", []);
       await db.run("INSERT OR IGNORE INTO sms_settings (name, value) VALUES ('sms_sender_id', 'FINANCIALORG')", []);
-      
+
       console.log('get-sms-settings: Default SMS settings inserted.');
     }
-    
+
     // Get settings from the sms_settings table
     console.log('get-sms-settings: Fetching individual settings...');
     const apiKeySetting = await db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_api_key']);
     const userIdSetting = await db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_user_id']);
     const enabledSetting = await db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_enabled']);
     const senderIdSetting = await db.get('SELECT value FROM sms_settings WHERE name = ?', ['sms_sender_id']);
-    
+
     console.log('get-sms-settings: Fetched settings from DB:', { apiKeySetting, userIdSetting, enabledSetting, senderIdSetting });
-    
+
     const result = {
       apiKey: apiKeySetting ? apiKeySetting.value : '',
       userId: userIdSetting ? userIdSetting.value : '',
@@ -1766,13 +1788,13 @@ ipcMain.handle('update-sms-settings', async (event, settings) => {
         value TEXT
       )
     `);
-    
+
     // Update settings
     await db.run('INSERT OR REPLACE INTO sms_settings (name, value) VALUES (?, ?)', ['sms_api_key', settings.apiKey]);
     await db.run('INSERT OR REPLACE INTO sms_settings (name, value) VALUES (?, ?)', ['sms_user_id', settings.userId]);
     await db.run('INSERT OR REPLACE INTO sms_settings (name, value) VALUES (?, ?)', ['sms_enabled', settings.enabled ? 'true' : 'false']);
     await db.run('INSERT OR REPLACE INTO sms_settings (name, value) VALUES (?, ?)', ['sms_sender_id', settings.senderId]);
-    
+
     return { success: true };
   } catch (error) {
     console.error('Error updating SMS settings:', error);
@@ -1788,7 +1810,7 @@ async function sendSMS(phoneNumber, message) {
     const userId = await getSMSSetting('sms_user_id');
     const smsEnabled = await getSMSSetting('sms_enabled');
     const senderId = await getSMSSetting('sms_sender_id');
-    
+
     // Check if SMS is enabled
     if (smsEnabled !== 'true' || !apiKey || !userId) {
       console.log('SMS is disabled or API credentials not set');
@@ -1797,7 +1819,7 @@ async function sendSMS(phoneNumber, message) {
 
     // Prepare the phone number (remove leading 0 and add country code if needed)
     const formattedPhone = formatPhoneNumber(phoneNumber);
-    
+
     // Prepare the API request to notify.lk
     const params = new URLSearchParams();
     params.append('user_id', userId);
@@ -1805,7 +1827,7 @@ async function sendSMS(phoneNumber, message) {
     params.append('sender_id', senderId);
     params.append('to', formattedPhone);
     params.append('message', message);
-    
+
     // Send the request
     const response = await axios.post('https://app.notify.lk/api/v1/send', params, {
       headers: {
@@ -1815,21 +1837,21 @@ async function sendSMS(phoneNumber, message) {
         rejectUnauthorized: false
       })
     });
-    
+
     // Log the SMS in database
     await db.run(
       'INSERT INTO sms_logs (phone_number, message, status, response_data) VALUES (?, ?, ?, ?)',
       formattedPhone, message, response.data.status, JSON.stringify(response.data)
     );
-    
-    return { 
+
+    return {
       success: response.data.status === 'success',
       data: response.data
     };
-    
+
   } catch (error) {
     console.error('Error sending SMS:', error);
-    
+
     // Log the error
     try {
       await db.run(
@@ -1839,10 +1861,10 @@ async function sendSMS(phoneNumber, message) {
     } catch (dbError) {
       console.error('Error logging SMS error:', dbError);
     }
-    
-    return { 
-      success: false, 
-      error: error.message 
+
+    return {
+      success: false,
+      error: error.message
     };
   }
 }
@@ -1851,17 +1873,17 @@ async function sendSMS(phoneNumber, message) {
 function formatPhoneNumber(phone) {
   // Clean the phone number - remove spaces, dashes, etc.
   let cleaned = phone.replace(/\D/g, '');
-  
+
   // If starts with a zero, remove it
   if (cleaned.startsWith('0')) {
     cleaned = cleaned.substring(1);
   }
-  
+
   // If doesn't start with country code, add Sri Lanka code (94)
   if (!cleaned.startsWith('94')) {
     cleaned = '94' + cleaned;
   }
-  
+
   return cleaned;
 }
 
@@ -1870,13 +1892,13 @@ async function getSMSSetting(name) {
   try {
     // Ensure sms_settings table exists
     const tableCheck = await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='sms_settings'");
-    
+
     if (!tableCheck) {
       // If table doesn't exist, return null
       console.log(`getSMSSetting: sms_settings table does not exist.`);
       return null;
     }
-    
+
     // Query the setting from sms_settings table
     const setting = await db.get('SELECT value FROM sms_settings WHERE name = ?', name);
     return setting ? setting.value : null;
@@ -1892,11 +1914,11 @@ ipcMain.handle('get-next-scheduled-backup', async () => {
     if (!nextScheduledBackup) {
       return { scheduled: false };
     }
-    
-    return { 
+
+    return {
       scheduled: true,
       timestamp: nextScheduledBackup.toISOString(),
-      formattedDate: nextScheduledBackup.toLocaleString() 
+      formattedDate: nextScheduledBackup.toLocaleString()
     };
   } catch (error) {
     console.error('Error getting next scheduled backup time:', error);
