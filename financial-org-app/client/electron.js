@@ -58,6 +58,7 @@ function createTables() {
       status TEXT DEFAULT 'active',
       balance REAL,
       interest REAL DEFAULT 0,
+      unpaid_interest REAL DEFAULT 0,
       FOREIGN KEY(memberId) REFERENCES members(id)
     )`,
     `CREATE TABLE IF NOT EXISTS loan_payments (
@@ -430,6 +431,9 @@ function migrateTables() {
       
       if (!columnNames.includes('interest')) {
         return "ALTER TABLE loans ADD COLUMN interest REAL DEFAULT 0";
+      }
+      if (!columnNames.includes('unpaid_interest')) {
+        return "ALTER TABLE loans ADD COLUMN unpaid_interest REAL DEFAULT 0";
       }
       return null;
     }
@@ -909,7 +913,7 @@ ipcMain.handle('add-loan-payment', async (event, loanId, payment) => {
   return new Promise((resolve, reject) => {
     const { date, amount, note, premium_amount, interest_amount } = payment;
     
-    // First get the loan details to identify the member
+    // First get the loan details and calculate current unpaid interest
     db.get('SELECT * FROM loans WHERE id = ?', [loanId], (err, loan) => {
       if (err) {
         reject(err);
@@ -921,64 +925,81 @@ ipcMain.handle('add-loan-payment', async (event, loanId, payment) => {
         return;
       }
       
-      // Calculate the current accrued interest
-      const lastPaymentDate = loan.payments && loan.payments.length > 0 
-        ? new Date(Math.max(...loan.payments.map(p => new Date(p.date).getTime())))
-        : new Date(loan.startDate);
-      
-      const paymentDate = new Date(date);
-      const daysDiff = Math.floor((paymentDate - lastPaymentDate) / (1000 * 60 * 60 * 24));
-      
-      let newAccruedInterest = 0;
-      const interestRate = loan.interestRate / 100;
-      
-      if (loan.dailyInterest) {
-        // Daily interest calculation
-        const dailyRate = interestRate / 365;
-        newAccruedInterest = loan.balance * dailyRate * daysDiff;
-      } else {
-        // Monthly interest calculation (30 days per month)
-        const monthlyRate = interestRate / 12;
-        const monthsElapsed = daysDiff / 30;
-        newAccruedInterest = loan.balance * monthlyRate * monthsElapsed;
-      }
-      
-      // Only use newly accrued interest (no accumulated interest tracking)
-      const totalInterestDue = newAccruedInterest;
-      
-      // No remaining interest tracking needed
-      
-      // Now add the payment record with interest and principal information
-      db.run(
-        'INSERT INTO loan_payments (loanId, date, amount, note, interestAmount) VALUES (?, ?, ?, ?, ?)',
-        [loanId, date, amount, note, interest_amount || 0],
-        function(err) {
+      // Get the last interest payment date (not any payment date)
+      db.get(
+        'SELECT MAX(date) as lastInterestDate FROM loan_payments WHERE loanId = ? AND interestAmount > 0',
+        [loanId],
+        (err, lastInterestPayment) => {
           if (err) {
             reject(err);
             return;
           }
           
-          const paymentId = this.lastID;
+          // Calculate interest from last interest payment date or loan start date
+          const lastInterestDate = lastInterestPayment?.lastInterestDate 
+            ? new Date(lastInterestPayment.lastInterestDate)
+            : new Date(loan.startDate);
           
-          // Then update the loan balance (no interest field tracking needed)
+          const paymentDate = new Date(date);
+          const daysDiff = Math.floor((paymentDate - lastInterestDate) / (1000 * 60 * 60 * 24));
+          
+          let newAccruedInterest = 0;
+          const interestRate = loan.interestRate / 100;
+          
+          if (loan.dailyInterest) {
+            // Daily interest calculation
+            const dailyRate = interestRate / 365;
+            newAccruedInterest = loan.balance * dailyRate * daysDiff;
+          } else {
+            // Monthly interest calculation (30 days per month)
+            const monthlyRate = interestRate / 12;
+            const monthsElapsed = daysDiff / 30;
+            newAccruedInterest = loan.balance * monthlyRate * monthsElapsed;
+          }
+          
+          // Calculate total unpaid interest (existing + newly accrued)
+          const currentUnpaidInterest = loan.unpaid_interest || 0;
+          const totalUnpaidInterest = currentUnpaidInterest + newAccruedInterest;
+          
+          // Calculate how much interest is being paid
+          const interestPayment = interest_amount || 0;
+          const remainingUnpaidInterest = Math.max(0, totalUnpaidInterest - interestPayment);
+          
+          // Add the payment record
           db.run(
-            'UPDATE loans SET balance = balance - ? WHERE id = ?',
-            [premium_amount || 0, loanId],
+            'INSERT INTO loan_payments (loanId, date, amount, note, interestAmount) VALUES (?, ?, ?, ?, ?)',
+            [loanId, date, amount, note, interestPayment],
             function(err) {
               if (err) {
                 reject(err);
                 return;
               }
               
-              // Return the payment details along with memberId for reference
-              resolve({ 
-                id: paymentId, 
-                loanId, 
-                memberId: loan.memberId, 
-                premium_amount: premium_amount || 0,
-                interest_amount: interest_amount || 0,
-                ...payment 
-              });
+              const paymentId = this.lastID;
+              
+              // Update the loan: reduce balance by principal payment and update unpaid interest
+              db.run(
+                'UPDATE loans SET balance = balance - ?, unpaid_interest = ? WHERE id = ?',
+                [premium_amount || 0, remainingUnpaidInterest, loanId],
+                function(err) {
+                  if (err) {
+                    reject(err);
+                    return;
+                  }
+                  
+                  // Return the payment details along with memberId for reference
+                  resolve({ 
+                    id: paymentId, 
+                    loanId, 
+                    memberId: loan.memberId, 
+                    premium_amount: premium_amount || 0,
+                    interest_amount: interestPayment,
+                    totalUnpaidInterest: remainingUnpaidInterest,
+                    newAccruedInterest: newAccruedInterest,
+                    ...payment 
+                  });
+                }
+              );
             }
           );
         }

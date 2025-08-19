@@ -88,35 +88,42 @@ const Loans = () => {
     fetchLoanTypes();
   }, []);
 
-  // Calculate accrued interest for a loan
+  // Calculate total interest due for a loan (unpaid + newly accrued)
   const calculateAccruedInterest = (loan) => {
     if (!loan || !loan.startDate) return 0;
     
-    // Get the last payment date or loan start date
-    const lastPaymentDate = loan.payments && loan.payments.length > 0 
-      ? new Date(Math.max(...loan.payments.map(p => new Date(p.date).getTime())))
+    // Get existing unpaid interest
+    const unpaidInterest = loan.unpaid_interest || 0;
+    
+    // Get the last interest payment date (not any payment date)
+    const lastInterestPayment = loan.payments && loan.payments.length > 0 
+      ? loan.payments.filter(p => p.interestAmount > 0).sort((a, b) => new Date(b.date) - new Date(a.date))[0]
+      : null;
+    
+    const lastInterestDate = lastInterestPayment 
+      ? new Date(lastInterestPayment.date)
       : new Date(loan.startDate);
     
     const today = new Date();
-    const daysDiff = Math.floor((today - lastPaymentDate) / (1000 * 60 * 60 * 24));
+    const daysDiff = Math.floor((today - lastInterestDate) / (1000 * 60 * 60 * 24));
     
-    // Handle daily vs monthly interest
-    let newInterestAmount = 0;
+    // Calculate newly accrued interest since last interest payment
+    let newAccruedInterest = 0;
     const interestRate = loan.interestRate / 100;
     
     if (loan.dailyInterest) {
       // Daily interest calculation
       const dailyRate = interestRate / 365;
-      newInterestAmount = loan.balance * dailyRate * daysDiff;
+      newAccruedInterest = loan.balance * dailyRate * daysDiff;
     } else {
       // Monthly interest calculation (30 days per month)
       const monthlyRate = interestRate / 12;
       const monthsElapsed = daysDiff / 30;
-      newInterestAmount = loan.balance * monthlyRate * monthsElapsed;
+      newAccruedInterest = loan.balance * monthlyRate * monthsElapsed;
     }
     
-    // Return only the newly accrued interest
-    return newInterestAmount;
+    // Return total interest due (unpaid + newly accrued)
+    return unpaidInterest + newAccruedInterest;
   };
 
   const fetchLoans = async () => {
@@ -1129,4 +1136,4 @@ const Loans = () => {
   );
 };
 
-export default Loans; 
+export default Loans;
