@@ -476,24 +476,16 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: preloadPath
+      preload: preloadPath,
+      webSecurity: true, // Enable web security
+      // Set Content Security Policy
+      // This is crucial for security. 'unsafe-eval' and 'unsafe-inline' are generally not recommended
+      // for production, but are included here to match the existing application's apparent needs.
+      // For a more secure application, these should be removed and replaced with specific hashes or nonces.
+      // 'connect-src' is added to allow connections to notify.lk for SMS.
+      csp: "default-src 'self' 'unsafe-inline' 'unsafe-eval' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://app.notify.lk;"
     },
     icon: path.join(__dirname, 'build/favicon.ico')
-  });
-
-  // Set Content Security Policy
-  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': [
-          "default-src 'self' 'unsafe-inline' 'unsafe-eval' data:; " +
-          "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
-          "style-src 'self' 'unsafe-inline'; " +
-          "img-src 'self' data: https:;"
-        ]
-      }
-    });
   });
   
   // Load the app - Fix for production path issues
@@ -786,6 +778,28 @@ ipcMain.handle('add-member', async (event, member) => {
             id: newMemberId, 
             ...member 
           });
+        }
+      }
+    );
+  });
+});
+
+ipcMain.handle('update-member', async (event, id, member) => {
+  return new Promise((resolve, reject) => {
+    const { member_id, name, address, phone, joinDate, status } = member;
+    db.run(
+      'UPDATE members SET member_id = ?, name = ?, address = ?, phone = ?, joinDate = ?, status = ? WHERE id = ?',
+      [member_id, name, address, phone, joinDate, status || 'active', id],
+      function(err) {
+        if (err) {
+          console.error('Error updating member:', err);
+          reject(err);
+        } else {
+          if (this.changes === 0) {
+            resolve({ success: false, message: 'Member not found or no changes made.' });
+          } else {
+            resolve({ success: true, id, ...member });
+          }
         }
       }
     );

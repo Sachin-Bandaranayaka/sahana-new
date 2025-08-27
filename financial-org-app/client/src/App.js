@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import Box from '@mui/material/Box'; // Added import
+import CircularProgress from '@mui/material/CircularProgress'; // Added import
 import Layout from './components/Layout';
 import Login from './components/Login';
 import Dashboard from './components/dashboard/Dashboard';
@@ -13,6 +15,7 @@ import Dividends from './components/dividends/Dividends';
 import Accounts from './components/accounts/Accounts';
 import Reports from './components/reports/Reports';
 import Settings from './components/settings/Settings';
+import Messages from './components/messages/Messages';
 import InterestTestTool from './components/testing/InterestTestTool';
 import api from './services/api';
 import './index.css';
@@ -55,7 +58,11 @@ function App() {
   };
   
   if (loading) {
-    return null; // Or a loading spinner
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <CircularProgress />
+      </Box>
+    );
   }
   
   // Protected route component
@@ -89,6 +96,7 @@ function App() {
               <Route path="accounts" element={<Accounts />} />
               <Route path="reports" element={<Reports />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="messages" element={<Messages />} />
               <Route path="interest-test" element={<InterestTestTool />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
