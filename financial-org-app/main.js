@@ -1,3 +1,15 @@
+// ============================================================================
+// ⚠️ WARNING: THIS FILE IS NOT CURRENTLY USED ⚠️
+// ============================================================================
+// The actual entry point is: financial-org-app/client/electron.js
+// This file (main.js) exists but is not referenced in any package.json
+// 
+// DO NOT MODIFY THIS FILE - It will not affect the running application
+// If you need to make changes, edit: client/electron.js instead
+//
+// This file may be removed or should be kept in sync with client/electron.js
+// ============================================================================
+
 const { app, BrowserWindow, ipcMain, session } = require('electron');
 const path = require('path');
 const isDev = require('electron-is-dev');

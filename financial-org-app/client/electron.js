@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const isDev = process.env.NODE_ENV === 'development';
 const fs = require('fs');
+const bcrypt = require('bcrypt');
 
 // Simply require sqlite3
 const sqlite3 = require('sqlite3').verbose();
@@ -26,6 +27,14 @@ function createDatabase() {
       console.error('Database opening error: ', err);
     } else {
       console.log('Connected to SQLite database');
+      // Enable foreign key constraints
+      db.run('PRAGMA foreign_keys = ON', (err) => {
+        if (err) {
+          console.error('Error enabling foreign keys:', err);
+        } else {
+          console.log('Foreign key constraints enabled');
+        }
+      });
       createTables();
       migrateTables();
     }
@@ -386,25 +395,31 @@ function createTables() {
     }
 
     // Check if default admin user exists, if not create it
-    db.get('SELECT COUNT(*) as count FROM users', (err, row) => {
+    db.get('SELECT COUNT(*) as count FROM users', async (err, row) => {
       if (err) {
         console.error('Error checking users:', err);
         return;
       }
       
       if (row.count === 0) {
-        // Create default admin user
-        db.run(
-          'INSERT INTO users (username, password, role, created_at) VALUES (?, ?, ?, ?)',
-          ['admin', 'admin123', 'admin', new Date().toISOString()],
-          function(err) {
-            if (err) {
-              console.error('Error creating default admin user:', err);
-            } else {
-              console.log('Default admin user created');
+        try {
+          // Create default admin user with hashed password
+          const hashedPassword = await bcrypt.hash('admin123', 10);
+          db.run(
+            'INSERT INTO users (username, password, role, created_at) VALUES (?, ?, ?, ?)',
+            ['admin', hashedPassword, 'admin', new Date().toISOString()],
+            function(err) {
+              if (err) {
+                console.error('Error creating default admin user:', err);
+              } else {
+                console.log('Default admin user created with hashed password');
+                console.log('IMPORTANT: Change the default password (admin123) immediately!');
+              }
             }
-          }
-        );
+          );
+        } catch (hashError) {
+          console.error('Error hashing default password:', hashError);
+        }
       }
     });
   });
@@ -571,30 +586,47 @@ app.on('ready', async () => {
   // Authentication handlers
   ipcMain.handle('verify-user', async (event, credentials) => {
     return new Promise((resolve, reject) => {
+      // First, get the user by username only
       db.get(
-        'SELECT id, username, role FROM users WHERE username = ? AND password = ?',
-        [credentials.username, credentials.password],
-        (err, user) => {
+        'SELECT id, username, role, password FROM users WHERE username = ?',
+        [credentials.username],
+        async (err, user) => {
           if (err) {
             console.error('Error verifying user:', err);
             reject(err);
             return;
           }
           
-          if (user) {
-            // Update last login time
-            db.run(
-              'UPDATE users SET last_login = ? WHERE id = ?',
-              [new Date().toISOString(), user.id],
-              (err) => {
-                if (err) {
-                  console.error('Error updating last login:', err);
-                }
-              }
-            );
-            resolve({ success: true, user });
-          } else {
+          if (!user) {
             resolve({ success: false, message: 'Invalid username or password' });
+            return;
+          }
+          
+          try {
+            // Compare the provided password with the hashed password
+            const isValidPassword = await bcrypt.compare(credentials.password, user.password);
+            
+            if (isValidPassword) {
+              // Update last login time
+              db.run(
+                'UPDATE users SET last_login = ? WHERE id = ?',
+                [new Date().toISOString(), user.id],
+                (err) => {
+                  if (err) {
+                    console.error('Error updating last login:', err);
+                  }
+                }
+              );
+              
+              // Remove password from response
+              const { password, ...userWithoutPassword } = user;
+              resolve({ success: true, user: userWithoutPassword });
+            } else {
+              resolve({ success: false, message: 'Invalid username or password' });
+            }
+          } catch (bcryptError) {
+            console.error('Error comparing passwords:', bcryptError);
+            reject(bcryptError);
           }
         }
       );
@@ -603,11 +635,11 @@ app.on('ready', async () => {
 
   ipcMain.handle('changePassword', async (event, userId, oldPassword, newPassword) => {
     return new Promise((resolve, reject) => {
-      // First verify the old password
+      // First get the user with their current hashed password
       db.get(
-        'SELECT id, username FROM users WHERE id = ? AND password = ?',
-        [userId, oldPassword],
-        (err, user) => {
+        'SELECT id, username, password FROM users WHERE id = ?',
+        [userId],
+        async (err, user) => {
           if (err) {
             console.error('Error verifying password:', err);
             reject(err);
@@ -615,24 +647,40 @@ app.on('ready', async () => {
           }
           
           if (!user) {
-            resolve({ success: false, message: 'Current password is incorrect' });
+            resolve({ success: false, message: 'User not found' });
             return;
           }
           
-          // Update to the new password
-          db.run(
-            'UPDATE users SET password = ? WHERE id = ?',
-            [newPassword, userId],
-            (err) => {
-              if (err) {
-                console.error('Error changing password:', err);
-                reject(err);
-                return;
-              }
-              
-              resolve({ success: true, message: 'Password changed successfully' });
+          try {
+            // Verify the old password
+            const isValidPassword = await bcrypt.compare(oldPassword, user.password);
+            
+            if (!isValidPassword) {
+              resolve({ success: false, message: 'Current password is incorrect' });
+              return;
             }
-          );
+            
+            // Hash the new password
+            const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+            
+            // Update to the new hashed password
+            db.run(
+              'UPDATE users SET password = ? WHERE id = ?',
+              [hashedNewPassword, userId],
+              (err) => {
+                if (err) {
+                  console.error('Error changing password:', err);
+                  reject(err);
+                  return;
+                }
+                
+                resolve({ success: true, message: 'Password changed successfully' });
+              }
+            );
+          } catch (bcryptError) {
+            console.error('Error processing password change:', bcryptError);
+            reject(bcryptError);
+          }
         }
       );
     });
@@ -1591,36 +1639,120 @@ ipcMain.handle('restore-data', async (event, filePath) => {
       const backupData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
       
       // Start a transaction to ensure all-or-nothing restoration
-      db.run('BEGIN TRANSACTION', err => {
+      db.run('BEGIN TRANSACTION', async (err) => {
         if (err) {
           reject(err);
           return;
         }
         
         try {
-          // Clear existing data
+          // Clear existing data (synchronously to ensure it completes first)
           const tables = [
-            'members', 'loans', 'loan_payments', 'cashbook', 
-            'bank_accounts', 'bank_transactions', 'dividends', 
-            'dividend_payments', 'settings'
+            'dividend_payments', 'loan_payments', 'bank_transactions',
+            'dividends', 'loans', 'cashbook', 'bank_accounts', 'members', 'settings'
           ];
           
-          tables.forEach(table => {
-            db.run(`DELETE FROM ${table}`);
-          });
-          
-          // Restore members
-          if (backupData.members && backupData.members.length > 0) {
-            backupData.members.forEach(member => {
-              db.run(
-                'INSERT INTO members (id, member_id, name, address, phone, joinDate, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                [member.id, member.member_id, member.name, member.address, member.phone, member.joinDate, member.status]
-              );
+          // Delete in reverse order to respect foreign keys
+          for (const table of tables) {
+            await new Promise((resolveDelete, rejectDelete) => {
+              db.run(`DELETE FROM ${table}`, (err) => {
+                if (err) {
+                  console.error(`Error deleting from ${table}:`, err);
+                  rejectDelete(err);
+                } else {
+                  resolveDelete();
+                }
+              });
             });
           }
           
-          // Restore other tables similarly
-          // ...
+          // Helper function to insert records
+          const insertRecords = async (tableName, records, columns, values) => {
+            if (!records || records.length === 0) return;
+            
+            const placeholders = columns.map(() => '?').join(', ');
+            const sql = `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`;
+            
+            for (const record of records) {
+              await new Promise((resolveInsert, rejectInsert) => {
+                const recordValues = values(record);
+                db.run(sql, recordValues, (err) => {
+                  if (err) {
+                    console.error(`Error inserting into ${tableName}:`, err);
+                    rejectInsert(err);
+                  } else {
+                    resolveInsert();
+                  }
+                });
+              });
+            }
+          };
+          
+          // Restore members
+          await insertRecords('members', backupData.members, 
+            ['id', 'member_id', 'name', 'address', 'phone', 'joinDate', 'status'],
+            (m) => [m.id, m.member_id, m.name, m.address, m.phone, m.joinDate, m.status]
+          );
+          
+          // Restore settings (but skip password-related settings to keep hashed passwords)
+          if (backupData.settings && backupData.settings.length > 0) {
+            for (const setting of backupData.settings) {
+              if (setting.name !== 'password') {
+                await new Promise((resolveInsert, rejectInsert) => {
+                  db.run(
+                    'INSERT OR REPLACE INTO settings (id, name, value) VALUES (?, ?, ?)',
+                    [setting.id, setting.name, setting.value],
+                    (err) => {
+                      if (err) rejectInsert(err);
+                      else resolveInsert();
+                    }
+                  );
+                });
+              }
+            }
+          }
+          
+          // Restore bank accounts
+          await insertRecords('bank_accounts', backupData.bank_accounts,
+            ['id', 'accountNumber', 'bankName', 'accountType', 'balance', 'openDate'],
+            (a) => [a.id, a.accountNumber, a.bankName, a.accountType, a.balance, a.openDate]
+          );
+          
+          // Restore cashbook
+          await insertRecords('cashbook', backupData.cashbook,
+            ['id', 'date', 'type', 'category', 'amount', 'description', 'reference', 'memberId'],
+            (e) => [e.id, e.date, e.type, e.category, e.amount, e.description, e.reference, e.memberId]
+          );
+          
+          // Restore loans
+          await insertRecords('loans', backupData.loans,
+            ['id', 'memberId', 'amount', 'interestRate', 'startDate', 'endDate', 'purpose', 'dailyInterest', 'status', 'balance', 'interest', 'unpaid_interest'],
+            (l) => [l.id, l.memberId, l.amount, l.interestRate, l.startDate, l.endDate, l.purpose, l.dailyInterest, l.status, l.balance, l.interest, l.unpaid_interest]
+          );
+          
+          // Restore dividends
+          await insertRecords('dividends', backupData.dividends,
+            ['id', 'quarterEndDate', 'totalShares', 'profitAmount', 'dividendRate', 'calculationDate'],
+            (d) => [d.id, d.quarterEndDate, d.totalShares, d.profitAmount, d.dividendRate, d.calculationDate]
+          );
+          
+          // Restore bank transactions
+          await insertRecords('bank_transactions', backupData.bank_transactions,
+            ['id', 'accountId', 'date', 'type', 'amount', 'description', 'balance'],
+            (t) => [t.id, t.accountId, t.date, t.type, t.amount, t.description, t.balance]
+          );
+          
+          // Restore loan payments
+          await insertRecords('loan_payments', backupData.loan_payments,
+            ['id', 'loanId', 'date', 'amount', 'note', 'interestAmount'],
+            (p) => [p.id, p.loanId, p.date, p.amount, p.note, p.interestAmount]
+          );
+          
+          // Restore dividend payments
+          await insertRecords('dividend_payments', backupData.dividend_payments,
+            ['id', 'dividendId', 'memberId', 'shares', 'amount', 'status', 'paymentDate'],
+            (p) => [p.id, p.dividendId, p.memberId, p.shares, p.amount, p.status, p.paymentDate]
+          );
           
           // Commit the transaction
           db.run('COMMIT', err => {
